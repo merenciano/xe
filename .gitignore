@@ -1,0 +1,9 @@
+.vs
+.vscode
+.idea
+.cache
+bin
+build
+out
+!bin/assets/frag.glsl
+!bin/assets/vert.glsl
