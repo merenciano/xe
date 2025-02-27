@@ -1,22 +1,19 @@
 #include "orxata.h"
+#include "spine/AnimationState.h"
+#include "spine/Attachment.h"
+#include "spine/Skeleton.h"
 
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include <stb/stb_image.h>
 #include <llulu/lu_time.h>
+#include <llulu/lu_math.h>
+#include <spine/spine.h>
 
 #include <stdbool.h>
 #include <stdio.h>
 #include <assert.h>
-
-typedef struct image_t {
-    const char *path;
-    void *data;
-    int w;
-    int h;
-    int channels;
-    orx_texture_t tex;
-} image_t;
+#include <math.h>
 
 struct {
     int64_t frame_count;
@@ -29,25 +26,7 @@ struct {
     int64_t total_time_ns;
 } timer_data;
 
-static inline image_t load_image(const char *path)
-{
-    image_t img = {.path = path, .tex = {-1, -1} };
-    img.data = stbi_load(img.path, &img.w, &img.h, &img.channels, 0);
-
-    if (!img.data) {
-        printf("Error loading the image %s.\nAborting execution.\n", img.path);
-        exit(1);
-    } else {
-        img.tex = orx_texture_reserve((orx_texture_format_t){
-            .width = img.w,
-            .height = img.h,
-            .pixel_fmt = img.channels == 4 ? ORX_PIXFMT_RGBA : ORX_PIXFMT_RGB,
-            .flags = 0
-        });
-        assert(img.tex.idx >= 0);
-    }
-    return img;
-}
+void print_timer_data();
 
 GLFWwindow *g_window;
 
@@ -88,16 +67,16 @@ int main(int argc, char **argv)
 
     int64_t elapsed = lu_time_elapsed(timer);
     timer_data.glfw_init_ns = elapsed;
-
     timer = lu_time_get();
-    image_t owl_atlas = load_image("./assets/owl.png");
-    image_t tex_test1 = load_image("./assets/default_tex.png");
-    image_t tex_test2 = load_image("./assets/tex_test.png");
+
+    orx_image_t owl_atlas = orx_load_image("./assets/owl.png");
+    orx_image_t tex_test1 = orx_load_image("./assets/default_tex.png");
+    orx_image_t tex_test2 = orx_load_image("./assets/tex_test.png");
 
     elapsed = lu_time_elapsed(timer);
     timer_data.stb_img_load_ns = elapsed;
-
     timer = lu_time_get();
+    
     orx_init(&cfg);
 
     orx_texture_set(owl_atlas.tex, owl_atlas.data);
@@ -129,28 +108,30 @@ int main(int argc, char **argv)
     orx_index_t indices[6] = {0, 1, 2, 0, 2, 3};
 
     orx_node_t nodes[4];
+#ifdef ORX_DEBUG
     nodes[0].name = "Node_0";
+    nodes[1].name = "Node_1";
+    nodes[2].name = "Node_2";
+    nodes[3].name = "Node_3";
+#endif
     nodes[0].pos_x = 640.0f * 0.5f;
     nodes[0].pos_y = 430.0f * 0.5f;
     nodes[0].scale_x = 200.0f;
     nodes[0].scale_y = 200.0f;
     nodes[0].shape = orx_mesh_add(vertices, 4, indices, 6);
-    nodes[0].shape.texture = owl_atlas.tex;
-    nodes[1].name = "Node_1";
+    nodes[0].shape.texture = tex_test1.tex;
     nodes[1].pos_x = 640.0f * 0.5f;
     nodes[1].pos_y = 430.0f * 1.5f;
     nodes[1].scale_x = 100.0f;
     nodes[1].scale_y = 100.0f;
     nodes[1].shape = nodes[0].shape;
     nodes[1].shape.texture = tex_test1.tex;
-    nodes[2].name = "Node_2";
     nodes[2].pos_x = 640.0f * 1.5f;
     nodes[2].pos_y = 430.0f * 1.5f;
     nodes[2].scale_x = 100.0f;
     nodes[2].scale_y = 100.0f;
     nodes[2].shape = nodes[0].shape;
     nodes[2].shape.texture = tex_test2.tex;
-    nodes[3].name = "Node_3";
     nodes[3].pos_x = 640.0f * 1.5f;
     nodes[3].pos_y = 430.0f * 0.5f;
     nodes[3].scale_x = 100.0f;
@@ -160,14 +141,89 @@ int main(int argc, char **argv)
     elapsed = lu_time_elapsed(timer);
     timer_data.orx_init_ns = elapsed;
 
+    spBone_setYDown(-1);
+    spAtlas *sp_atlas = spAtlas_createFromFile("./assets/owl.atlas", &owl_atlas);
+    spSkeletonJson *skel_json = spSkeletonJson_create(sp_atlas);
+    spSkeletonData *skel_data = spSkeletonJson_readSkeletonDataFile(skel_json, "./assets/owl-pro.json");
+    if (!skel_data) {
+        printf("%s\n", skel_json->error);
+        return 1;
+    }
+    spAnimationStateData *anim_data = spAnimationStateData_create(skel_data);
+    orx_spine_t spine_node = {.skel = spSkeleton_create(skel_data), .anim = spAnimationState_create(anim_data)};
+    spSkeleton_setToSetupPose(spine_node.skel);
+    int total_vertices = 0;
+    int total_indices = 0;
+    for (int i = 0; i < skel_data->skinsCount; ++i) {
+        for (spSkinEntry* entry = spSkin_getAttachments(skel_data->skins[i]); entry; entry = entry->next) {
+            if (entry->attachment) {
+                switch (entry->attachment->type) {
+                case SP_ATTACHMENT_MESH:
+                    total_vertices += (((spMeshAttachment*)entry->attachment)->super.worldVerticesLength / 2);
+                    total_indices += ((spMeshAttachment*)entry->attachment)->trianglesCount;
+                    break;
+                case SP_ATTACHMENT_REGION:
+                    total_vertices += 4;
+                    total_indices += 6;
+                    break;
+                default:
+                    break;
+                }
+            }
+        }
+    }
+
+    spine_node.node.shape = orx_mesh_add(NULL, total_vertices, NULL, total_indices);
+    spine_node.node.shape.texture = owl_atlas.tex;
+    spSkeleton_updateWorldTransform(spine_node.skel, SP_PHYSICS_UPDATE);
+
+    spine_node.node.pos_x = 640.0f;
+    spine_node.node.pos_y = 640.0f;
+    spine_node.node.scale_x = 0.8f;
+    spine_node.node.scale_y = 0.8f;
+    spAnimationState_setAnimationByName(spine_node.anim, 0, "idle", true);
+    spAnimationState_setAnimationByName(spine_node.anim, 1, "blink", true);
+
+    spTrackEntry *left = spAnimationState_setAnimationByName(spine_node.anim, 2, "left", true);
+	spTrackEntry *right = spAnimationState_setAnimationByName(spine_node.anim, 3, "right", true);
+	spTrackEntry *up = spAnimationState_setAnimationByName(spine_node.anim, 4, "up", true);
+	spTrackEntry *down = spAnimationState_setAnimationByName(spine_node.anim, 5, "down", true);
+
+	left->alpha = 0;
+	left->mixBlend = SP_MIX_BLEND_ADD;
+	right->alpha = 0;
+	right->mixBlend = SP_MIX_BLEND_ADD;
+	up->alpha = 0;
+	up->mixBlend = SP_MIX_BLEND_ADD;
+	down->alpha = 0;
+	down->mixBlend = SP_MIX_BLEND_ADD;
     
     timer_data.init_time_ns = lu_time_elapsed(start_time);
     timer = lu_time_get();
+
     while(!glfwWindowShouldClose(g_window)) {
+
+        double dx, dy;
+        glfwGetCursorPos(g_window, &dx, &dy);
+        float x = dx / cfg.canvas_width;
+        float y = dy / cfg.canvas_height;
+        left->alpha = (lu_maxf(x, 0.5f) - 0.5f) * 1.0f;
+        right->alpha = (0.5f - lu_minf(x, 0.5f)) * 1.0f;
+        down->alpha = (lu_maxf(y, 0.5f) - 0.5f) * 1.0f;
+        up->alpha = (0.5f - lu_minf(y, 0.5f)) * 1.0f;
+
+        spSkeleton_setToSetupPose(spine_node.skel);
+        orx_spine_update(&spine_node, lu_time_sec(elapsed));
+
+        float curr_time_sec = lu_time_sec(lu_time_elapsed(start_time));
+        nodes[0].scale_x = 100.0f + sinf(curr_time_sec) * 50.0f;
+        nodes[0].scale_y = 100.0f + cosf(curr_time_sec) * 50.0f;
+        
         orx_draw_node(&nodes[0]);
         orx_draw_node(&nodes[1]);
         orx_draw_node(&nodes[2]);
         orx_draw_node(&nodes[3]);
+        orx_spine_draw(&spine_node);
 
         orx_render();
 
@@ -189,6 +245,7 @@ int main(int argc, char **argv)
     timer_data.shutdown_time_ns = lu_time_elapsed(timer);
     timer_data.total_time_ns = lu_time_elapsed(start_time);
 
+#ifdef ORX_VERBOSE
     printf(" * Report (%lld frames, %.2f seconds) * \n", timer_data.frame_count, lu_time_sec(timer_data.total_time_ns));
     printf("Init time: %lld ms\n", lu_time_ms(timer_data.init_time_ns));
     printf(" - glfw:\t%lld ms\n", lu_time_ms(timer_data.glfw_init_ns));
@@ -202,6 +259,23 @@ int main(int argc, char **argv)
     double sum_d = sum;
     printf("Last 256 frame times average: %.2f ms\n", sum / 1000000.0f);
     printf("Shutdown: %lld ms\n", lu_time_ms(timer_data.shutdown_time_ns));
-
+#endif
     return 0;
+}
+
+static inline void print_timer_data()
+{
+    printf(" * Report (%lld frames, %.2f seconds) * \n", timer_data.frame_count, lu_time_sec(timer_data.total_time_ns));
+    printf("Init time: %lld ms\n", lu_time_ms(timer_data.init_time_ns));
+    printf(" - glfw:\t%lld ms\n", lu_time_ms(timer_data.glfw_init_ns));
+    printf(" - stb_img:\t%lld ms\n", lu_time_ms(timer_data.stb_img_load_ns));
+    printf(" - orxata:\t%lld ms\n", lu_time_ms(timer_data.orx_init_ns));
+    int64_t sum = 0;
+    for (int i = 0; i < 256; ++i) {
+        sum += timer_data.frame_time[i];
+    }
+    sum /= 256;
+    double sum_d = sum;
+    printf("Last 256 frame times average: %.2f ms\n", sum / 1000000.0f);
+    printf("Shutdown: %lld ms\n", lu_time_ms(timer_data.shutdown_time_ns));
 }

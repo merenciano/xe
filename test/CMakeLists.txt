@@ -9,11 +9,14 @@ target_sources(farto PRIVATE
 target_include_directories(farto PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/extern/include
+    ${CMAKE_SOURCE_DIR}/extern/llulu/include
+    ${CMAKE_SOURCE_DIR}/extern/spine/spine-c/include
     ${CMAKE_SOURCE_DIR}/include
 )
 
 target_link_libraries(farto PRIVATE
     orxata
     orxata_extern
-    glfw3
+    glfw
+    spine-c
 )

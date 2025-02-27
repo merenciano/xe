@@ -1,3 +1,6 @@
+#ifndef __ORXATA_H__
+#define __ORXATA_H__
+
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -19,7 +22,7 @@ typedef struct orx_config_t {
     float seconds_between_shader_file_changed_checks;
 } orx_config_t;
 
-typedef int16_t orx_index_t;
+typedef uint16_t orx_index_t;
 
 enum { /* Texture flags */
     ORX_TEX_DEPTH = 0x01,
@@ -59,6 +62,15 @@ typedef struct orx_texture_t {
     int layer;
 } orx_texture_t;
 
+typedef struct orx_image_t {
+    const char *path;
+    void *data;
+    int w;
+    int h;
+    int channels;
+    orx_texture_t tex;
+} orx_image_t;
+
 typedef struct orx_vertex_t {
     float x;
     float y;
@@ -71,8 +83,8 @@ typedef struct orx_shape_t {
     int base_vtx;
     int first_idx;
     int idx_count;
-    orx_texture_t texture;
     int draw_index;
+    orx_texture_t texture;
 } orx_shape_t;
 
 typedef struct orx_node_t {
@@ -82,11 +94,20 @@ typedef struct orx_node_t {
     float scale_y;
     orx_shape_t shape;
 
-    // debug
+#ifdef ORX_DEBUG
     const char *name;
+#endif
 } orx_node_t;
 
+typedef struct orx_spine_t {
+    orx_node_t node;
+    struct spSkeleton *skel;
+    struct spAnimationState *anim;
+} orx_spine_t;
+
+
 void orx_init(orx_config_t *config);
+orx_image_t orx_load_image(const char *path);
 orx_shape_t orx_mesh_add(const orx_vertex_t *vtx_data, int vtx_count, const orx_index_t *idx_data, int idx_count);
 orx_texture_t orx_texture_reserve(orx_texture_format_t format);
 void orx_texture_set(orx_texture_t tex, void *data);
@@ -95,3 +116,7 @@ void orx_render(void);
 
 /* Extended API */
 void orx_shader_reload(void);
+void orx_spine_update(orx_spine_t *self, float delta_sec);
+void orx_spine_draw(orx_spine_t *self);
+
+#endif /* __ORXATA_H__ */

@@ -1,6 +1,9 @@
 #include "orxata.h"
 
+#include <spine/spine.h>
+#include <spine/extension.h>
 #include <glad/glad.h>
+#include <stb/stb_image.h>
 #include <sys/stat.h>
 
 #include <stdbool.h>
@@ -9,8 +12,6 @@
 #include <stdio.h>
 #include <assert.h>
 #include <string.h>
-
-#define ORX_VERBOSE
 
 #define ORX_VTXBUF_CAP (1024 * 1024)
 #define ORX_IDXBUF_CAP (1024 * 1024)
@@ -21,12 +22,11 @@
 #define ORX_ERRMSG_CAP 2048
 #define ORX_SHAPE_CAP 128
 
-#define ORX_ARR_SIZE(ARR) (sizeof(ARR) / sizeof(ARR[0]))
-#define ORX_IS_POW2(X) ((X > 0) && !((X) & ((X) - 1)))
-
 typedef struct orx_shader_shape_data_t {
-    float pos[2];
-    float scale[2];
+    float pos_x;
+    float pos_y;
+    float scale_x;
+    float scale_y;
     int32_t tex_idx;
     float tex_layer;
     int32_t ipad[2];
@@ -52,12 +52,10 @@ typedef struct orx_drawcmd {
 } orx_drawcmd_t;
 
 typedef struct orx_gl_renderer_t {
-    // TODO: better heap than static
-    orx_vertex_t vtxbuf[ORX_VTXBUF_CAP];
-    int vtx_count;
-
-    orx_index_t idxbuf[ORX_IDXBUF_CAP];
     int idx_count;
+    int vtx_count;
+    orx_vertex_t vtxbuf[ORX_VTXBUF_CAP]; // TODO: better heap than static
+    orx_index_t idxbuf[ORX_IDXBUF_CAP];
 
     orx_texarr_pool_t tex;
     int tex_count;
@@ -65,7 +63,7 @@ typedef struct orx_gl_renderer_t {
     orx_shader_data_t shader_data;
 
     orx_drawcmd_t drawlist[ORX_SHAPE_CAP];
-    int drawlist_count;
+    orx_drawcmd_t *draw_next;
 
     uint32_t program_id;
     uint32_t va_id; // vertex array object 
@@ -100,7 +98,7 @@ orx_shader_gpu_setup(void)
     orx_shader_reload();
     glCreateBuffers(1, &g_r.ub_id);
     glBindBuffer(GL_UNIFORM_BUFFER, g_r.ub_id);
-    glBufferData(GL_UNIFORM_BUFFER, sizeof(orx_shader_data_t), &g_r.shader_data, GL_DYNAMIC_DRAW);
+    //glBufferData(GL_UNIFORM_BUFFER, sizeof(orx_shader_data_t), &g_r.shader_data, GL_DYNAMIC_DRAW);
 }
 
 void
@@ -129,6 +127,7 @@ orx_shader_reload(void)
     if (!err) {
         glGetShaderInfoLog(vert_id, ORX_ERRMSG_CAP, NULL, out_log);
         printf("Vert Shader:\n%s\n", out_log);
+        glDeleteShader(vert_id);
         return;
     }
     glAttachShader(g_r.program_id, vert_id);
@@ -151,6 +150,9 @@ orx_shader_reload(void)
     if (!err) {
         glGetShaderInfoLog(frag_id, ORX_ERRMSG_CAP, NULL, out_log);
         printf("Frag Shader:\n%s\n", out_log);
+        glDetachShader(g_r.program_id, vert_id);
+        glDeleteShader(frag_id);
+        glDeleteShader(vert_id);
         return;
     }
     glAttachShader(g_r.program_id, frag_id);
@@ -228,6 +230,7 @@ orx_mesh_gpu_setup(void)
     glCreateBuffers(1, &g_r.vb_id);
     glCreateBuffers(1, &g_r.ib_id);
     glCreateVertexArrays(1, &g_r.va_id);
+    glBindVertexArray(g_r.va_id);
     glVertexArrayVertexBuffer(g_r.va_id, 0, g_r.vb_id, 0, sizeof(orx_vertex_t));
     glVertexArrayElementBuffer(g_r.va_id, g_r.ib_id);
 
@@ -256,11 +259,16 @@ orx_mesh_add(const orx_vertex_t *vtx_data, int vtx_count,
     //shape.texture.layer = -1.0f;
     shape.draw_index = -1;
 
-    memcpy((void*)(&g_r.vtxbuf[g_r.vtx_count]), vtx_data, vtx_count * sizeof(orx_vertex_t));
-    g_r.vtx_count += vtx_count;
+    if (vtx_data) {
+        memcpy((void*)(&g_r.vtxbuf[g_r.vtx_count]), vtx_data, vtx_count * sizeof(orx_vertex_t));
+    }
+    g_r.vtx_count += vtx_count; // Add count anyway since the buffer gap will be filled later.
+
     assert(g_r.vtx_count < ORX_VTXBUF_CAP);
 
-    memcpy((void*)(&g_r.idxbuf[g_r.idx_count]), idx_data, idx_count * sizeof(orx_index_t));
+    if (idx_data) {
+        memcpy((void*)(&g_r.idxbuf[g_r.idx_count]), idx_data, idx_count * sizeof(orx_index_t));
+    }
     g_r.idx_count += idx_count;
     assert(g_r.idx_count < ORX_IDXBUF_CAP);
 
@@ -345,7 +353,7 @@ orx_texture_reserve(orx_texture_format_t fmt)
         printf("Error: orx_texture_reserve failed (full texture pool). Consider increasing ORX_TEXARR_CAP.\n");
         return (orx_texture_t){-1, -1};
     }
-    
+
     int index = g_r.tex_count++;
     g_r.tex.fmt[index] = fmt;
     g_r.tex.count[index] = 1;
@@ -360,10 +368,32 @@ orx_texture_set(orx_texture_t tex, void *data)
     glTextureSubImage3D(g_r.tex.id[tex.idx], 0, 0, 0, (int)tex.layer, fmt->width, fmt->height, 1, g_tex_format_lut[fmt->pixel_fmt], g_tex_typefmt_lut[fmt->pixel_fmt], data);
 }
 
+orx_image_t
+orx_load_image(const char *path)
+{
+    orx_image_t img = {.path = path, .tex = {-1, -1} };
+    img.data = stbi_load(img.path, &img.w, &img.h, &img.channels, 0);
+
+    if (!img.data) {
+        printf("Error loading the image %s.\nAborting execution.\n", img.path);
+        exit(1);
+    } else {
+        img.tex = orx_texture_reserve((orx_texture_format_t){
+            .width = img.w,
+            .height = img.h,
+            .pixel_fmt = img.channels == 4 ? ORX_PIXFMT_RGBA : ORX_PIXFMT_RGB,
+            .flags = 0
+        });
+        assert(img.tex.idx >= 0);
+    }
+    return img;
+}
 
 void
 orx_init(orx_config_t *cfg)
 {
+    g_r.draw_next = g_r.drawlist;
+
     if (cfg) {
         g_config = *cfg;
         gladLoadGLLoader(cfg->gl_loader);
@@ -386,51 +416,220 @@ orx_init(orx_config_t *cfg)
 
     glGenBuffers(1, &g_r.dib_id);
     glBindBuffer(GL_DRAW_INDIRECT_BUFFER, g_r.dib_id);
-    glBufferData(GL_DRAW_INDIRECT_BUFFER, sizeof(orx_drawcmd_t) * g_r.drawlist_count, g_r.drawlist, GL_DYNAMIC_DRAW);
+    //glBufferData(GL_DRAW_INDIRECT_BUFFER, (char*)g_r.draw_next - (char*)g_r.drawlist, g_r.drawlist, GL_DYNAMIC_DRAW);
 
-    glBindVertexArray(g_r.va_id);
 }
 
 void orx_draw_node(orx_node_t *node)
 {
-    orx_drawcmd_t *cmd = g_r.drawlist + g_r.drawlist_count;
-    node->shape.draw_index = g_r.drawlist_count;
-    cmd->instance_count = 1;
-    cmd->draw_index = node->shape.draw_index;
-    cmd->base_vtx = node->shape.base_vtx;
-    cmd->first_idx = node->shape.first_idx;
-    cmd->element_count = node->shape.idx_count;
-    ++g_r.drawlist_count;
+    // fill draw command buffer
+    const int idx = g_r.draw_next - g_r.drawlist;
+    g_r.draw_next->element_count = node->shape.idx_count;
+    g_r.draw_next->instance_count = 1;
+    g_r.draw_next->first_idx = node->shape.first_idx;
+    g_r.draw_next->base_vtx = node->shape.base_vtx;
+    g_r.draw_next->draw_index = idx;
+    g_r.draw_next++;
 
-    orx_shader_shape_data_t *data = g_r.shader_data.shape + node->shape.draw_index;
-    data->pos[0] = node->pos_x;
-    data->pos[1] = node->pos_y;
-    data->scale[0] = node->scale_x;
-    data->scale[1] = node->scale_y;
-    data->tex_idx = node->shape.texture.idx;
-    data->tex_layer = (float)node->shape.texture.layer;
+    // fill shader storage buffer
+    memcpy(&g_r.shader_data.shape[idx], node, 4 * sizeof(float));
+    g_r.shader_data.shape[idx].tex_idx = (float)node->shape.texture.idx;
+    g_r.shader_data.shape[idx].tex_layer = (float)node->shape.texture.layer;
 }
 
 void orx_render(void)
 {
     // Check if any of the GLSL files has changed for hot-reload.
+    // TODO: async
     orx_shader_check_reload();
 
     glClear(GL_COLOR_BUFFER_BIT);
-
     // sync mesh buffer
+    // TODO: Persistent mapped fenced ring buffer ?? Spines at least
     glNamedBufferData(g_r.vb_id, g_r.vtx_count * sizeof(orx_vertex_t), (const void*)(&g_r.vtxbuf[0]), GL_STATIC_DRAW);
     glNamedBufferData(g_r.ib_id, g_r.idx_count * sizeof(orx_index_t), (const void*)(&g_r.idxbuf[0]), GL_STATIC_DRAW);
-
     // sync shader data buffer
+    // TODO: Persistent mapped fenced ring buffer
     glBufferData(GL_UNIFORM_BUFFER, sizeof(orx_shader_data_t), &g_r.shader_data, GL_DYNAMIC_DRAW);
     glBindBufferBase(GL_UNIFORM_BUFFER, 0, g_r.ub_id);
-
     // sync draw command buffer 
-    glBufferData(GL_DRAW_INDIRECT_BUFFER, sizeof(orx_drawcmd_t) * g_r.drawlist_count, g_r.drawlist, GL_DYNAMIC_DRAW);
+    // TODO: Persistent mapped fenced ring buffer
+    glBufferData(GL_DRAW_INDIRECT_BUFFER, (char*)g_r.draw_next - (char*)g_r.drawlist, g_r.drawlist, GL_DYNAMIC_DRAW);
+    glMultiDrawElementsIndirect(GL_TRIANGLES, sizeof(orx_index_t) == 4 ? GL_UNSIGNED_INT : GL_UNSIGNED_SHORT, 0, g_r.draw_next - g_r.drawlist, 0);
 
-    glMultiDrawElementsIndirect(GL_TRIANGLES, sizeof(orx_index_t) == 4 ? GL_UNSIGNED_INT : GL_UNSIGNED_SHORT, 0, g_r.drawlist_count, 0);
+    // reset cpu drawlist for the next frame
+    g_r.draw_next = g_r.drawlist;
+}
 
-    // reset cpu list for the next frame
-    g_r.drawlist_count = 0;
+void orx_spine_update(orx_spine_t *self, float delta_sec)
+{
+    spAnimationState_update(self->anim, delta_sec);
+	spAnimationState_apply(self->anim, self->skel);
+	spSkeleton_update(self->skel, delta_sec);
+	spSkeleton_updateWorldTransform(self->skel, SP_PHYSICS_UPDATE);
+}
+
+void orx_spine_draw(orx_spine_t *self)
+{
+    //enum {VERT_BUF_CAP = 4096};
+    //static orx_vertex_t vertices[VERT_BUF_CAP];
+    static orx_index_t quad_indices[] = {0, 1, 2, 2, 3, 0};
+    static spSkeletonClipping *g_clipper = NULL;
+	if (!g_clipper) {
+		g_clipper = spSkeletonClipping_create();
+	}
+
+    orx_vertex_t *vertices = &g_r.vtxbuf[self->node.shape.base_vtx];
+    orx_index_t *indices = &g_r.idxbuf[self->node.shape.first_idx];
+    int slot_idx_count = 0;
+    int slot_vtx_count = 0;
+    float *uv = NULL;
+	spSkeleton *sk = self->skel;
+	for (int i = 0; i < sk->slotsCount; ++i) {
+		spSlot *slot = sk->drawOrder[i];
+		spAttachment *attachment = slot->attachment;
+		if (!attachment) {
+			spSkeletonClipping_clipEnd(g_clipper, slot);
+			continue;
+		}
+
+		if (slot->color.a == 0 || !slot->bone->active) {
+			spSkeletonClipping_clipEnd(g_clipper, slot);
+			continue;
+		}
+
+		spColor *attach_color = NULL;
+
+		if (attachment->type == SP_ATTACHMENT_REGION) {
+			spRegionAttachment *region = (spRegionAttachment *)attachment;
+			attach_color = &region->color;
+
+			if (attach_color->a == 0) {
+				spSkeletonClipping_clipEnd(g_clipper, slot);
+				continue;
+			}
+
+            assert((vertices - g_r.vtxbuf) <= g_r.vtx_count);
+            assert((indices - g_r.idxbuf) <= self->node.shape.idx_count);
+
+            memcpy(indices, quad_indices, sizeof(quad_indices));
+            slot_idx_count = 6;
+			slot_vtx_count = 4;
+			spRegionAttachment_computeWorldVertices(region, slot, (float*)vertices, 0, sizeof(orx_vertex_t) / sizeof(float));
+            uv = region->uvs;
+			//self->node.shape.texture = ((orx_image_t *) (((spAtlasRegion *) region->rendererObject)->page->rendererObject))->tex;
+		} else if (attachment->type == SP_ATTACHMENT_MESH) {
+			spMeshAttachment *mesh = (spMeshAttachment *) attachment;
+			attach_color = &mesh->color;
+
+			// Early out if the slot color is 0
+			if (attach_color->a == 0) {
+				spSkeletonClipping_clipEnd(g_clipper, slot);
+				continue;
+			}
+
+            assert((vertices - g_r.vtxbuf) <= g_r.vtx_count);
+            assert((indices - g_r.idxbuf) <= self->node.shape.idx_count);
+
+            slot_vtx_count = mesh->super.worldVerticesLength / 2;
+            assert(slot_vtx_count <= g_r.vtx_count); // TODO: remove
+			spVertexAttachment_computeWorldVertices(SUPER(mesh), slot, 0, slot_vtx_count * 2, (float*)vertices, 0, sizeof(orx_vertex_t) / sizeof(float));
+            uv = mesh->uvs;
+            memcpy(indices, mesh->triangles, mesh->trianglesCount * sizeof(*indices));
+            slot_idx_count = mesh->trianglesCount;
+			//self->node.shape.texture = ((orx_image_t *) (((spAtlasRegion *) mesh->rendererObject)->page->rendererObject))->tex;
+		} else if (attachment->type == SP_ATTACHMENT_CLIPPING) {
+			spClippingAttachment *clip = (spClippingAttachment *) slot->attachment;
+			spSkeletonClipping_clipStart(g_clipper, slot, clip);
+			continue;
+		} else {
+			continue;
+        }
+
+        uint32_t color = (uint8_t)(sk->color.r * slot->color.r * attach_color->r * 255);
+        color |= ((uint8_t)(sk->color.g * slot->color.g * attach_color->g * 255) << 8);
+        color |= ((uint8_t)(sk->color.b * slot->color.b * attach_color->b * 255) << 16);
+        color |= ((uint8_t)(sk->color.a * slot->color.a * attach_color->a * 255) << 24);
+
+        for (int v = 0; v < slot_vtx_count; ++v) {
+            vertices[v].u = *uv++;
+            vertices[v].v = *uv++;
+            vertices[v].color = color;
+        }
+
+		if (spSkeletonClipping_isClipping(g_clipper)) {
+            // TODO: Optimize but first try with spine-cpp-lite compiled as .so for C
+            spSkeletonClipping_clipTriangles(g_clipper, (float*)vertices, slot_vtx_count * 2, indices, slot_idx_count, &vertices->u, sizeof(*vertices));
+            slot_vtx_count = g_clipper->clippedVertices->size >> 1;
+            orx_vertex_t *vtxit = vertices;
+            float *xyit = g_clipper->clippedVertices->items;
+            float *uvit = g_clipper->clippedUVs->items;
+            for (int j = 0; j < slot_vtx_count; ++j) {
+                vtxit->x = *xyit++;
+                vtxit->u = *uvit++;
+                vtxit->y = *xyit++;
+                (vtxit++)->v = *uvit++;
+            }
+            slot_idx_count = g_clipper->clippedTriangles->size;
+            memcpy(indices, g_clipper->clippedTriangles->items, slot_idx_count * sizeof(*indices));
+		}
+
+        // fill draw command buffer
+        const int idx = g_r.draw_next - g_r.drawlist;
+        g_r.draw_next->element_count = slot_idx_count;
+        g_r.draw_next->instance_count = 1;
+        g_r.draw_next->first_idx = indices - g_r.idxbuf;
+        g_r.draw_next->base_vtx = vertices - g_r.vtxbuf;
+        g_r.draw_next->draw_index = idx;
+        g_r.draw_next++;
+
+        g_r.shader_data.shape[idx].pos_x = self->node.pos_x;
+        g_r.shader_data.shape[idx].pos_y = self->node.pos_y;
+        g_r.shader_data.shape[idx].scale_x = self->node.scale_x;
+        g_r.shader_data.shape[idx].scale_y = self->node.scale_y;
+        g_r.shader_data.shape[idx].tex_idx = self->node.shape.texture.idx;
+        g_r.shader_data.shape[idx].tex_layer = (float)self->node.shape.texture.layer;
+
+        vertices += slot_vtx_count;
+        indices += slot_idx_count;
+
+        /*
+        switch (slot->data->blendMode) {
+            case SP_BLEND_MODE_NORMAL:
+                SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND);
+                break;
+            case SP_BLEND_MODE_MULTIPLY:
+                SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_MOD);
+                break;
+            case SP_BLEND_MODE_ADDITIVE:
+                SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_ADD);
+                break;
+            case SP_BLEND_MODE_SCREEN:
+                SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND);
+                break;
+                */
+
+		spSkeletonClipping_clipEnd(g_clipper, slot);
+	}
+	spSkeletonClipping_clipEnd2(g_clipper);
+}
+
+void _spAtlasPage_createTexture(spAtlasPage *self, const char *path)
+{
+    (void)path;
+    assert(self->atlas->rendererObject);
+    self->rendererObject = self->atlas->rendererObject;
+#ifdef ORX_VERBOSE
+    printf("Spine atlas: %s\n", ((orx_image_t*)self->rendererObject)->path);
+#endif
+}
+
+void _spAtlasPage_disposeTexture(spAtlasPage *self)
+{
+    (void)self;
+}
+
+char *_spUtil_readFile(const char *path, int *length)
+{
+    return _spReadFile(path, length);
 }
