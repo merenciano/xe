@@ -12,6 +12,7 @@ set_target_properties(orxata PROPERTIES ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_SOURCE_
 
 target_sources(orxata PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/orxata.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/scene.c
 )
 
 target_include_directories(orxata PRIVATE

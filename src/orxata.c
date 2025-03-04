@@ -471,8 +471,6 @@ void orx_spine_update(orx_spine_t *self, float delta_sec)
 
 void orx_spine_draw(orx_spine_t *self)
 {
-    //enum {VERT_BUF_CAP = 4096};
-    //static orx_vertex_t vertices[VERT_BUF_CAP];
     static orx_index_t quad_indices[] = {0, 1, 2, 2, 3, 0};
     static spSkeletonClipping *g_clipper = NULL;
 	if (!g_clipper) {
@@ -596,16 +594,12 @@ void orx_spine_draw(orx_spine_t *self)
         /*
         switch (slot->data->blendMode) {
             case SP_BLEND_MODE_NORMAL:
-                SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND);
                 break;
             case SP_BLEND_MODE_MULTIPLY:
-                SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_MOD);
                 break;
             case SP_BLEND_MODE_ADDITIVE:
-                SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_ADD);
                 break;
             case SP_BLEND_MODE_SCREEN:
-                SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND);
                 break;
                 */
 

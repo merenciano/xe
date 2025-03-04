@@ -61,7 +61,7 @@ int main(int argc, char **argv)
     }
 
     glfwMakeContextCurrent(g_window);
-    glfwSwapInterval(1);
+    glfwSwapInterval(0);
 
     cfg.gl_loader = (void *(*)(const char *))glfwGetProcAddress;
 
@@ -197,7 +197,7 @@ int main(int argc, char **argv)
 	up->mixBlend = SP_MIX_BLEND_ADD;
 	down->alpha = 0;
 	down->mixBlend = SP_MIX_BLEND_ADD;
-    
+
     timer_data.init_time_ns = lu_time_elapsed(start_time);
     timer = lu_time_get();
 
@@ -218,7 +218,7 @@ int main(int argc, char **argv)
         float curr_time_sec = lu_time_sec(lu_time_elapsed(start_time));
         nodes[0].scale_x = 100.0f + sinf(curr_time_sec) * 50.0f;
         nodes[0].scale_y = 100.0f + cosf(curr_time_sec) * 50.0f;
-        
+
         orx_draw_node(&nodes[0]);
         orx_draw_node(&nodes[1]);
         orx_draw_node(&nodes[2]);
@@ -246,19 +246,7 @@ int main(int argc, char **argv)
     timer_data.total_time_ns = lu_time_elapsed(start_time);
 
 #ifdef ORX_VERBOSE
-    printf(" * Report (%lld frames, %.2f seconds) * \n", timer_data.frame_count, lu_time_sec(timer_data.total_time_ns));
-    printf("Init time: %lld ms\n", lu_time_ms(timer_data.init_time_ns));
-    printf(" - glfw:\t%lld ms\n", lu_time_ms(timer_data.glfw_init_ns));
-    printf(" - stb_img:\t%lld ms\n", lu_time_ms(timer_data.stb_img_load_ns));
-    printf(" - orxata:\t%lld ms\n", lu_time_ms(timer_data.orx_init_ns));
-    int64_t sum = 0;
-    for (int i = 0; i < 256; ++i) {
-        sum += timer_data.frame_time[i];
-    }
-    sum /= 256;
-    double sum_d = sum;
-    printf("Last 256 frame times average: %.2f ms\n", sum / 1000000.0f);
-    printf("Shutdown: %lld ms\n", lu_time_ms(timer_data.shutdown_time_ns));
+    print_timer_data();
 #endif
     return 0;
 }

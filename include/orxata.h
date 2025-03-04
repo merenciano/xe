@@ -8,8 +8,18 @@
 /*
     TODO:
      -> Node hierarchy (transform matrix)
-     -> Spine runtime
+     -> Spine dark color
+     -> Blend modes
      -> Text rendering
+
+
+    Hierarchy:
+    - App
+        - Platform
+        - Scene
+            - Node graph: High lvl api
+                - ECS: Internal representation & detailed API
+                    - Renderer
 */
 
 typedef struct orx_config_t {
@@ -92,7 +102,8 @@ typedef struct orx_node_t {
     float pos_y;
     float scale_x;
     float scale_y;
-    orx_shape_t shape;
+    /* TODO: rotation */
+    orx_shape_t shape; /* TODO: Change to enum: SHAPE_QUAD, SHAPE_SPINE... */
 
 #ifdef ORX_DEBUG
     const char *name;
