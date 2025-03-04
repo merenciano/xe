@@ -26,7 +26,7 @@ struct {
     int64_t total_time_ns;
 } timer_data;
 
-void print_timer_data();
+static inline void print_timer_data();
 
 GLFWwindow *g_window;
 

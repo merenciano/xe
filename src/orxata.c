@@ -172,6 +172,12 @@ orx_shader_reload(void)
     glDeleteShader(frag_id);
 }
 
+#ifndef WIN32
+#define _stat stat
+#else
+#define fstat _stat
+#endif
+
 static void
 orx_shader_check_reload(void)
 {
@@ -186,7 +192,8 @@ orx_shader_check_reload(void)
 
         if (difftime(time(NULL), timer) > g_config.seconds_between_shader_file_changed_checks) {
             struct _stat stat;
-            int err = _stat(g_config.vert_shader_path, &stat);
+
+            int err = fstat(g_config.vert_shader_path, &stat);
             if (err) {
                 if (err == -1) {
                     printf("%s not found.\n", g_config.vert_shader_path);
@@ -201,7 +208,7 @@ orx_shader_check_reload(void)
 #endif
                     orx_shader_reload();
                 } else {
-                    err = _stat(g_config.frag_shader_path, &stat);
+                    err = fstat(g_config.frag_shader_path, &stat);
                     if (err) {
                         if (err == -1) {
                             printf("%s not found.\n", g_config.frag_shader_path);

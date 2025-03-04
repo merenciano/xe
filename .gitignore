@@ -3,8 +3,10 @@
 .idea
 .cache
 .clangd
-bin
-build
-out
-!bin/assets/frag.glsl
-!bin/assets/vert.glsl
+bin/*
+bin/*.*
+bin/assets/**.png
+bin/assets/**.atlas
+bin/assets/**.json
+build/
+out/

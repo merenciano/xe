@@ -35,12 +35,7 @@ typedef struct orx_scenenode_desc {
     float rotation; /* In radians */
     int type;
     lu_sstr asset_id; // Quad -> Image // Skeleton -> Spine
-    struct {
-        int self;
-        int first_child;
-        int next_sibling;
-        int parent;
-    } node;
+    int child_count;
 } orx_scenenode_desc;
 
 typedef struct orx_scene_desc {
