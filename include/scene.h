@@ -1,3 +1,5 @@
+
+#define __ORX_SCENE_H__
 #ifndef __ORX_SCENE_H__
 #define __ORX_SCENE_H__
 
@@ -21,10 +23,15 @@ typedef struct orx_spine_desc {
     const char * const skeleton_path;
 } orx_spine_desc;
 
+/* Do not combine them like flags. The values are for mask checking from systems.
+   e.g. the render system could filter nodes using:
+       enum { DRAWABLE_MASK = ORX_NODE_QUAD | ORX_NODE_SKELETON };
+       if (node.type & DRAWABLE_MASK) { drawlist.push(node); }
+ */
 enum {
-    ORX_SNT_EMPTY,
-    ORX_SNT_QUAD,
-    ORX_SNT_SPINE,
+    ORX_NODE_EMPTY    = 0x0000,
+    ORX_NODE_SHAPE    = 0x0001,
+    ORX_NODE_SKELETON = 0x0002,
 };
 
 typedef struct orx_scenenode_desc {
@@ -33,9 +40,9 @@ typedef struct orx_scenenode_desc {
     float scale_x;
     float scale_y;
     float rotation; /* In radians */
+    int child_count;
     int type;
     lu_sstr asset_id; // Quad -> Image // Skeleton -> Spine
-    int child_count;
 } orx_scenenode_desc;
 
 typedef struct orx_scene_desc {

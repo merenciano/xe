@@ -118,25 +118,21 @@ int main(int argc, char **argv)
     nodes[0].pos_y = 430.0f * 0.5f;
     nodes[0].scale_x = 200.0f;
     nodes[0].scale_y = 200.0f;
-    nodes[0].shape = orx_mesh_add(vertices, 4, indices, 6);
-    nodes[0].shape.texture = tex_test1.tex;
+    nodes[0].tex = tex_test1.tex;
     nodes[1].pos_x = 640.0f * 0.5f;
     nodes[1].pos_y = 430.0f * 1.5f;
     nodes[1].scale_x = 100.0f;
     nodes[1].scale_y = 100.0f;
-    nodes[1].shape = nodes[0].shape;
-    nodes[1].shape.texture = tex_test1.tex;
+    nodes[1].tex = tex_test1.tex;
     nodes[2].pos_x = 640.0f * 1.5f;
     nodes[2].pos_y = 430.0f * 1.5f;
     nodes[2].scale_x = 100.0f;
     nodes[2].scale_y = 100.0f;
-    nodes[2].shape = nodes[0].shape;
-    nodes[2].shape.texture = tex_test2.tex;
+    nodes[2].tex = tex_test2.tex;
     nodes[3].pos_x = 640.0f * 1.5f;
     nodes[3].pos_y = 430.0f * 0.5f;
     nodes[3].scale_x = 100.0f;
     nodes[3].scale_y = 100.0f;
-    nodes[3].shape = nodes[0].shape;
 
     elapsed = lu_time_elapsed(timer);
     timer_data.orx_init_ns = elapsed;
@@ -152,6 +148,8 @@ int main(int argc, char **argv)
     spAnimationStateData *anim_data = spAnimationStateData_create(skel_data);
     orx_spine_t spine_node = {.skel = spSkeleton_create(skel_data), .anim = spAnimationState_create(anim_data)};
     spSkeleton_setToSetupPose(spine_node.skel);
+
+#if 0
     int total_vertices = 0;
     int total_indices = 0;
     for (int i = 0; i < skel_data->skinsCount; ++i) {
@@ -174,7 +172,8 @@ int main(int argc, char **argv)
     }
 
     spine_node.node.shape = orx_mesh_add(NULL, total_vertices, NULL, total_indices);
-    spine_node.node.shape.texture = owl_atlas.tex;
+#endif
+    spine_node.node.tex = owl_atlas.tex;
     spSkeleton_updateWorldTransform(spine_node.skel, SP_PHYSICS_UPDATE);
 
     spine_node.node.pos_x = 640.0f;
@@ -219,12 +218,22 @@ int main(int argc, char **argv)
         nodes[0].scale_x = 100.0f + sinf(curr_time_sec) * 50.0f;
         nodes[0].scale_y = 100.0f + cosf(curr_time_sec) * 50.0f;
 
-        orx_draw_node(&nodes[0]);
-        orx_draw_node(&nodes[1]);
-        orx_draw_node(&nodes[2]);
-        orx_draw_node(&nodes[3]);
-        orx_spine_draw(&spine_node);
+        orx_shape_t shape = orx_gfx_add_mesh(vertices, sizeof(vertices), indices, sizeof(indices));
+        orx_shape_t shp[4] = { shape, shape, shape, shape };
+        for (int i = 0; i < 4; ++i) {
+            shp[i].material_idx = orx_gfx_add_material((orx_material_t){
+                .apx = nodes[i].pos_x,
+                .apy = nodes[i].pos_y,
+                .asx = nodes[i].scale_x,
+                .asy = nodes[i].scale_y,
+                .arot = nodes[i].rotation,
+                .tex = nodes[i].tex
+            });
 
+            orx_gfx_submit(shp[i]);
+        }
+
+        orx_spine_draw(&spine_node);
         orx_render();
 
         glfwSwapBuffers(g_window);

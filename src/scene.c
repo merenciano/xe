@@ -1,3 +1,4 @@
+#if 0
 #include "scene.h"
 
 #define ORX_SCENE_ITER_STACK_CAP 64
@@ -19,7 +20,7 @@ const orx_spine_desc g_spines[] = {
 const orx_scenenode_desc g_nodes[] = {
     { 
         .pos_x = 0.0f, .pos_y = 0.0f, .scale_x = 1.0f, .scale_y = 1.0f, .rotation = 0.0f,
-        .type = ORX_SNT_SPINE, .asset_id = {"owl"}, .child_count = 0
+        .type = ORX_NODE_SKELETON, .asset_id = {"owl"}, .child_count = 0
     }
 };
 
@@ -55,14 +56,16 @@ orx_scene_get_state(orx_scene_iter_stack_t *stack)
     return &EMPTY;
 }
 
-static inline bool orx_scene_pop_state(orx_scene_iter_stack_t *stack)
+static inline bool
+orx_scene_pop_state(orx_scene_iter_stack_t *stack)
 {
     assert(stack);
     assert(stack->count > 0);
     return stack->count--;
 }
 
-static inline void orx_scene_push_state(orx_scene_iter_stack_t *stack, int node_idx) //const orx_scenenode_desc *node)
+static inline void
+orx_scene_push_state(orx_scene_iter_stack_t *stack, int node_idx)
 {
     const orx_scene_iter_state_t *curr = orx_scene_get_state(stack);
     const orx_scenenode_desc *node = &g_nodes[node_idx];
@@ -77,18 +80,33 @@ static inline void orx_scene_push_state(orx_scene_iter_stack_t *stack, int node_
     assert(stack->count < ORX_SCENE_ITER_STACK_CAP);
 }
 
-static inline bool orx_scene_step_state(orx_scene_iter_stack_t *stack)
+static inline bool
+orx_scene_step_state(orx_scene_iter_stack_t *stack)
 {
     return --stack->buf[stack->count - 1].remaining_children;
 }
 
-static inline void orx_scene_update(void)
+static inline void
+orx_scene_update(void)
 {
     orx_scene_iter_stack_t state = { .count = 0 };
     for (int i = 0; i < ORX_SCENE_NODE_COUNT; ++i) {
         if (g_nodes[i].child_count > 0) {
             orx_scene_push_state(&state, i);
-            // UPDATE NODE
+
+            if (g_nodes[i].type & (ORX_NODE_SHAPE | ORX_NODE_SKELETON)) {
+                const orx_scene_iter_state_t *curr = orx_scene_get_state(&state);
+                /*
+                orx_gfx_process((orx_drawable_t){
+                    .apx = curr->abpx,
+                    .apy = curr->abpy,
+                    .asx = curr->absx,
+                    .asy = curr->absy,
+                    .arot = curr->abrot,
+                    .id = i
+                });
+                */
+            }
             continue;
         }
         // TODO populate vertex buffer, uniform buffer and multidraw command buffer with the node if it has shape.
@@ -102,3 +120,5 @@ static inline void orx_scene_update(void)
         }
     }
 }
+
+#endif

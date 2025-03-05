@@ -93,8 +93,7 @@ typedef struct orx_shape_t {
     int base_vtx;
     int first_idx;
     int idx_count;
-    int draw_index;
-    orx_texture_t texture;
+    int material_idx;
 } orx_shape_t;
 
 typedef struct orx_node_t {
@@ -102,13 +101,24 @@ typedef struct orx_node_t {
     float pos_y;
     float scale_x;
     float scale_y;
-    /* TODO: rotation */
+    float rotation;
     orx_shape_t shape; /* TODO: Change to enum: SHAPE_QUAD, SHAPE_SPINE... */
+    orx_texture_t tex;
 
 #ifdef ORX_DEBUG
     const char *name;
 #endif
 } orx_node_t;
+
+typedef struct orx_material_t {
+    /* absolute transform values */
+    float apx;
+    float apy;
+    float asx;
+    float asy;
+    float arot;
+    orx_texture_t tex;
+} orx_material_t;
 
 typedef struct orx_spine_t {
     orx_node_t node;
@@ -116,16 +126,16 @@ typedef struct orx_spine_t {
     struct spAnimationState *anim;
 } orx_spine_t;
 
-
 void orx_init(orx_config_t *config);
 orx_image_t orx_load_image(const char *path);
-orx_shape_t orx_mesh_add(const orx_vertex_t *vtx_data, int vtx_count, const orx_index_t *idx_data, int idx_count);
+//orx_shape_t orx_mesh_add(const orx_vertex_t *vtx_data, int vtx_count, const orx_index_t *idx_data, int idx_count);
 orx_texture_t orx_texture_reserve(orx_texture_format_t format);
 void orx_texture_set(orx_texture_t tex, void *data);
-void orx_draw_node(orx_node_t *node);
+orx_shape_t orx_gfx_add_mesh(const void *vert, size_t vert_size, const void *indices, size_t indices_size);
+int orx_gfx_add_material(orx_material_t mat);
+void orx_gfx_submit(orx_shape_t shape);
 void orx_render(void);
 
-/* Extended API */
 void orx_shader_reload(void);
 void orx_spine_update(orx_spine_t *self, float delta_sec);
 void orx_spine_draw(orx_spine_t *self);
