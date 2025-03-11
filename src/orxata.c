@@ -105,7 +105,6 @@ static orx_config_t g_config;
 static inline void
 orx_gfx_sync()
 {
-    #if 0
     lu_timestamp start = lu_time_get();
     GLenum err = glClientWaitSync(g_r.fence[g_r.phase], GL_SYNC_FLUSH_COMMANDS_BIT, ORX_MAX_SYNC_TIMEOUT_NANOSEC);
     int64_t sync_time_ns = lu_time_elapsed(start);
@@ -114,7 +113,6 @@ orx_gfx_sync()
     } else if (err == GL_CONDITION_SATISFIED) {
         printf("Warning: gpu fence blocked for %llu ns.\n", sync_time_ns);
     }
-        #endif
 }
 
 void
@@ -490,7 +488,7 @@ int orx_gfx_add_material(orx_material_t mat)
     uniform->tex_idx = mat.tex.idx;
     uniform->tex_layer = (float)mat.tex.layer;
 
-    int idx = (g_r.uniforms_vmap.head - offsetof(orx_shader_data_t, data)) / sizeof(orx_shader_shape_data_t);
+    int idx = (g_r.uniforms_vmap.head - g_r.phase * sizeof(orx_shader_data_t) - offsetof(orx_shader_data_t, data)) / sizeof(orx_shader_shape_data_t);
     g_r.uniforms_vmap.head += sizeof(orx_shader_shape_data_t);
     return idx;
 }
@@ -524,17 +522,6 @@ void orx_render(void)
     glBindBufferRange(GL_UNIFORM_BUFFER, 0, g_r.uniforms_vmap.id, g_r.phase * sizeof(orx_shader_data_t), sizeof(orx_shader_data_t));
 
     glClear(GL_COLOR_BUFFER_BIT);
-    // sync mesh buffer
-    // TODO: Persistent mapped fenced ring buffer ?? Spines at least
-    //glNamedBufferData(g_r.vb_id, g_r.vtx_count * sizeof(orx_vertex_t), (const void*)(&g_r.vtxbuf[0]), GL_STATIC_DRAW);
-    //glNamedBufferData(g_r.ib_id, g_r.idx_count * sizeof(orx_index_t), (const void*)(&g_r.idxbuf[0]), GL_STATIC_DRAW);
-    // sync shader data buffer
-    // TODO: Persistent mapped fenced ring buffer
-    //glBufferData(GL_UNIFORM_BUFFER, sizeof(orx_shader_data_t), &g_r.shader_data, GL_DYNAMIC_DRAW);
-    //glBindBufferBase(GL_UNIFORM_BUFFER, 0, g_r.ub_id);
-    // sync draw command buffer 
-    // TODO: Persistent mapped fenced ring buffer
-    //glBufferData(GL_DRAW_INDIRECT_BUFFER, (char*)g_r.draw_next - (char*)g_r.drawlist, g_r.drawlist, GL_DYNAMIC_DRAW);
 
     size_t offset = (g_r.phase * (ORX_DRAW_INDIRECT_MAP_SIZE / 3));
     size_t cmdbuf_size = g_r.draw_indirect_vmap.head - offset;
@@ -548,15 +535,6 @@ void orx_render(void)
     g_r.phase = (g_r.phase + 1) % 3;
     g_r.uniforms_vmap.head = g_r.phase * sizeof(orx_shader_data_t) + offsetof(orx_shader_data_t, data);
     g_r.draw_indirect_vmap.head = g_r.phase * (ORX_DRAW_INDIRECT_MAP_SIZE / 3);
-
-    lu_timestamp start = lu_time_get();
-    GLenum err = glClientWaitSync(g_r.fence[g_r.phase], GL_SYNC_FLUSH_COMMANDS_BIT, ORX_MAX_SYNC_TIMEOUT_NANOSEC);
-    int64_t sync_time_ns = lu_time_elapsed(start);
-    if (err == GL_TIMEOUT_EXPIRED) {
-        printf("Error: something is wrong with the gpu fences: sync blocked for more than 5ms.\n");
-    } else if (err == GL_CONDITION_SATISFIED) {
-        printf("Warning: gpu fence blocked for %llu ns.\n", sync_time_ns);
-    }
 }
 
 void orx_spine_update(orx_spine_t *self, float delta_sec)
