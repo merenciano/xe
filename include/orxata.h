@@ -17,8 +17,8 @@
     - App
         - Platform
         - Scene
-            - Node graph: High lvl api
-                - ECS: Internal representation & detailed API
+            - Node graph: High lvl api (handles)
+                - ECS: handle to internal representation and detailed API
                     - Renderer
 */
 
