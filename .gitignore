@@ -4,9 +4,9 @@
 .cache
 .clangd
 bin/*
-bin/*.*
 bin/assets/**.png
 bin/assets/**.atlas
 bin/assets/**.json
+!bin/assets/**.glsl
 build/
 out/
