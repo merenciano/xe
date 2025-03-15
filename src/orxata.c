@@ -17,7 +17,7 @@
 enum {
     ORX_MAX_VERTICES = 1U << 14,
     ORX_MAX_INDICES = 1U << 14,
-    ORX_MAX_UNIFORMS = 126,
+    ORX_MAX_UNIFORMS = 128,
     ORX_MAX_DRAW_INDIRECT = 128,
     ORX_MAX_TEXTURE_ARRAYS = 16,
     ORX_MAX_TEXTURE_ARRAY_SIZE = 16,
@@ -95,7 +95,7 @@ static orx_gl_renderer_t g_r; // Depends on zero init
 static orx_config_t g_config;
 
 static inline void
-orx_gfx_sync()
+orx_gfx_sync(void)
 {
     lu_timestamp start = lu_time_get();
     GLenum err = glClientWaitSync(g_r.fence[g_r.phase], GL_SYNC_FLUSH_COMMANDS_BIT, ORX_MAX_SYNC_TIMEOUT_NANOSEC);
@@ -112,8 +112,8 @@ orx_shader_gpu_setup(void)
 {
     // Ortho proj matrix
     float left = 0.0f;
-    float right = (float)g_config.canvas_width;
-    float bottom = (float)g_config.canvas_height;
+    float right = (float)g_config.canvas.w;
+    float bottom = (float)g_config.canvas.h;
     float top = 0.0f;
     float near = -1.0f;
     float far = 1.0f;
@@ -200,6 +200,8 @@ orx_shader_reload(void)
     glDeleteShader(frag_id);
 }
 
+
+/* TODO: Move orx_shader_check_reload to platform module. And call it async  */
 #ifndef _WIN32
 #define ORX_STAT_TYPE struct stat
 #define ORX_STAT_FUNC stat
@@ -396,15 +398,18 @@ orx_load_image(const char *path)
     return img;
 }
 
-void
+bool
 orx_init(orx_config_t *cfg)
 {
-    if (cfg) {
-        g_config = *cfg;
-        gladLoadGLLoader(cfg->gl_loader);
-    } else {
-        g_config.canvas_width = 1024;
-        g_config.canvas_height = 1024;
+    if (!cfg) {
+        return false;
+    }
+
+    g_config = *cfg;
+    gladLoadGLLoader(cfg->gl_loader);
+
+    for (int i = 0; i < 3; ++i) {
+        g_r.fence[i] = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
     }
 
     glDisable(GL_DEPTH_TEST);
@@ -412,8 +417,8 @@ orx_init(orx_config_t *cfg)
     glDisable(GL_STENCIL_TEST);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glClearColor(0.2f, 0.0f, 0.2f, 1.0f);
-    glViewport(0, 0, g_config.canvas_width, g_config.canvas_height);
+    glClearColor(g_config.canvas.bg_col[0], g_config.canvas.bg_col[1], g_config.canvas.bg_col[2], 1.0f);
+    glViewport(0, 0, g_config.canvas.w, g_config.canvas.h);
 
     /* Persistent mapped buffers for vertices, indices uniforms and indirect draw commands. */
     GLuint buf_id[4];
@@ -435,21 +440,24 @@ orx_init(orx_config_t *cfg)
     orx_shader_gpu_setup();
     orx_mesh_gpu_setup();
     orx_texture_gpu_setup();
+    return true;
 }
 
-orx_shape_t
+orx_mesh_t
 orx_gfx_add_mesh(const void *vert, size_t vert_size, const void *indices, size_t indices_size)
 {
+#ifdef ORX_DEBUG
+    orx_gfx_sync();
+#endif
     assert(vert_size < (ORX_VERTICES_MAP_SIZE / 3));
     assert(indices_size < (ORX_INDICES_MAP_SIZE / 3));
-    orx_gfx_sync();
 
-    orx_shape_t shape = { .idx_count = indices_size / sizeof(orx_index_t)};
+    orx_mesh_t mesh = { .idx_count = indices_size / sizeof(orx_index_t)};
 
     if ((g_r.vertices.head + vert_size) >= ORX_VERTICES_MAP_SIZE) {
         g_r.vertices.head = 0;
     }
-    shape.base_vtx = g_r.vertices.head / sizeof(orx_vertex_t);
+    mesh.base_vtx = g_r.vertices.head / sizeof(orx_vertex_t);
     void *dst = (char*)g_r.vertices.data + g_r.vertices.head;
     memcpy(dst, vert, vert_size);
     g_r.vertices.head += vert_size;
@@ -457,19 +465,21 @@ orx_gfx_add_mesh(const void *vert, size_t vert_size, const void *indices, size_t
     if ((g_r.indices.head + indices_size) >= ORX_INDICES_MAP_SIZE) {
         g_r.indices.head = 0;
     }
-    shape.first_idx = g_r.indices.head / sizeof(orx_index_t);
+    mesh.first_idx = g_r.indices.head / sizeof(orx_index_t);
     dst = (char*)g_r.indices.data + g_r.indices.head;
     memcpy(dst, indices, indices_size);
     g_r.indices.head += indices_size;
-    return shape;
+    return mesh;
 }
 
-int
+orx_draw_idx
 orx_gfx_add_material(orx_material_t mat)
 {
+#ifdef ORX_DEBUG
+    orx_gfx_sync();
+#endif
     assert(((g_r.uniforms.head - offsetof(orx_shader_data_t, data)) % sizeof(orx_shader_shape_data_t)) == 0);
     orx_shader_shape_data_t *uniform = (void*)((char*)g_r.uniforms.data + g_r.uniforms.head);
-    orx_gfx_sync();
     uniform->pos_x = mat.apx;
     uniform->pos_y = mat.apy;
     uniform->scale_x = mat.asx;
@@ -484,32 +494,42 @@ orx_gfx_add_material(orx_material_t mat)
 }
 
 void
-orx_gfx_submit(orx_shape_t shape)
+orx_gfx_submit(orx_mesh_t mesh, orx_draw_idx drawidx)
 {
+#ifdef ORX_DEBUG
+    orx_gfx_sync();
+#endif
     size_t frame_start = g_r.phase * (ORX_DRAW_INDIRECT_MAP_SIZE / 3);
     assert(g_r.drawlist.head - frame_start < ORX_DRAW_INDIRECT_MAP_SIZE / 3);
 
-    orx_gfx_sync();
-    
     *((orx_drawcmd_t*)(g_r.drawlist.data + g_r.drawlist.head)) = (orx_drawcmd_t){
-        .element_count = shape.idx_count,
+        .element_count = mesh.idx_count,
         .instance_count = 1,
-        .first_idx = shape.first_idx,
-        .base_vtx = shape.base_vtx,
-        .draw_index = shape.material_idx
+        .first_idx = mesh.first_idx,
+        .base_vtx = mesh.base_vtx,
+        .draw_index = drawidx 
     };
     g_r.drawlist.head += sizeof(orx_drawcmd_t);
 }
 
-void orx_render(void)
+void orx_render(orx_canvas_t *canvas)
 {
     orx_shader_check_reload(); // TODO: async
+
+    if (memcmp(&g_config.canvas, canvas, sizeof(g_config.canvas))) {
+        g_config.canvas = *canvas;
+        glClearColor(canvas->bg_col[0], canvas->bg_col[1], canvas->bg_col[2], 1.0f);
+        glViewport(0, 0, canvas->w, canvas->h);
+    }
 
     orx_gfx_sync();
     memcpy(g_r.uniforms.data + g_r.phase * sizeof(orx_shader_data_t), g_r.view_proj, sizeof(g_r.view_proj));
     glBindBufferRange(GL_UNIFORM_BUFFER, 0, g_r.uniforms.id, g_r.phase * sizeof(orx_shader_data_t), sizeof(orx_shader_data_t));
 
-    glClear(GL_COLOR_BUFFER_BIT);
+    glClear(
+        ((int)g_config.canvas.clear_color * GL_COLOR_BUFFER_BIT) |
+        ((int)g_config.canvas.clear_depth * GL_DEPTH_BUFFER_BIT) |
+        ((int)g_config.canvas.clear_stencil * GL_STENCIL_BUFFER_BIT));
 
     size_t offset = (g_r.phase * (ORX_DRAW_INDIRECT_MAP_SIZE / 3));
     size_t cmdbuf_size = g_r.drawlist.head - offset;
@@ -534,7 +554,6 @@ void orx_spine_update(orx_spine_t *self, float delta_sec)
 
 void orx_spine_draw(orx_spine_t *self)
 {
-    static orx_index_t quad_indices[] = {0, 1, 2, 2, 3, 0};
     static spSkeletonClipping *g_clipper = NULL;
 	if (!g_clipper) {
 		g_clipper = spSkeletonClipping_create();
@@ -572,7 +591,12 @@ void orx_spine_draw(orx_spine_t *self)
 				continue;
 			}
 
-            memcpy(indices, quad_indices, sizeof(quad_indices));
+            indibuf[0] = 0;
+            indibuf[1] = 1;
+            indibuf[2] = 2;
+            indibuf[3] = 2;
+            indibuf[4] = 3;
+            indibuf[5] = 0;
             slot_idx_count = 6;
 			slot_vtx_count = 4;
 			spRegionAttachment_computeWorldVertices(region, slot, (float*)vertices, 0, sizeof(orx_vertex_t) / sizeof(float));
@@ -630,8 +654,8 @@ void orx_spine_draw(orx_spine_t *self)
             memcpy(indices, g_clipper->clippedTriangles->items, slot_idx_count * sizeof(*indices));
 		}
 
-        orx_shape_t shape = orx_gfx_add_mesh(vertices, slot_vtx_count * sizeof(orx_vertex_t), indices, slot_idx_count * sizeof(orx_index_t));
-        shape.material_idx = orx_gfx_add_material((orx_material_t){
+        orx_mesh_t shape = orx_gfx_add_mesh(vertices, slot_vtx_count * sizeof(orx_vertex_t), indices, slot_idx_count * sizeof(orx_index_t));
+        orx_draw_idx di = orx_gfx_add_material((orx_material_t){
             .apx = self->node.pos_x, .apy = self->node.pos_y,
             .asx = self->node.scale_x, .asy = self->node.scale_y,
             .arot = self->node.rotation, .tex = self->node.tex
@@ -640,7 +664,7 @@ void orx_spine_draw(orx_spine_t *self)
 
         switch (slot->data->blendMode) {
             case SP_BLEND_MODE_NORMAL:
-                orx_gfx_submit(shape);
+                orx_gfx_submit(shape, di);
                 break;
             case SP_BLEND_MODE_MULTIPLY:
 #ifdef ORX_VERBOSE
