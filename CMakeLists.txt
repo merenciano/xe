@@ -27,8 +27,8 @@ target_compile_options(xe PRIVATE
 )
 
 add_compile_definitions(
-    $<$<CONFIG:Debug>:ORX_DEBUG>
-    $<$<CONFIG:Debug>:ORX_VERBOSE>
+    $<$<CONFIG:Debug>:XE_DEBUG>
+    $<$<CONFIG:Debug>:XE_VERBOSE>
 )
 
 if (WIN32)

@@ -14,12 +14,12 @@
 #include <assert.h>
 #include <math.h>
 
-#ifdef ORX_DEBUG
+#ifdef XE_DEBUG
 #define APP_PATHETIC_SHUTDOWN
 #endif
 #define APP_HALF_ASS_INIT
 
-static const orx_vertex_t QUAD_VERTICES[] = {
+static const xe_vertex QUAD_VERTICES[] = {
     { .x = -1.0f, .y = -1.0f,
       .u = 0.0f, .v = 0.0f,
       .color = 0xFFFF00FF },
@@ -34,13 +34,13 @@ static const orx_vertex_t QUAD_VERTICES[] = {
       .color = 0xFF00FF00 }
 };
 
-static const orx_index_t QUAD_INDICES[] = { 0, 1, 2, 0, 2, 3 };
+static const xe_index QUAD_INDICES[] = { 0, 1, 2, 0, 2, 3 };
 
 /* TODO: To app_ctx */
 struct {
     int64_t frame_count;
     int64_t glfw_init_ns;
-    int64_t orx_init_ns;
+    int64_t xe_init_ns;
     int64_t stb_img_load_ns;
     int64_t frame_time[256];
     int64_t init_time_ns;
@@ -57,7 +57,7 @@ struct {
     int window_height;
     bool vsync;
     /* Render surface */
-    orx_canvas_t canvas;
+    xe_canvas canvas;
     /* SO inputs */
     float mouse_x;
     float mouse_y;
@@ -87,11 +87,11 @@ void on_mouse_motion(GLFWwindow* window, double x, double y)
 
 int main(int argc, char **argv)
 {
-    app_ctx.name = "XEE PROVEM";
+    app_ctx.name = "XE TEST";
     app_ctx.window_width = 2280;
     app_ctx.window_height = 1860;
     app_ctx.vsync = false;
-    app_ctx.canvas = (orx_canvas_t){.clear_color = true, .clear_depth = false, .clear_stencil = false,
+    app_ctx.canvas = (xe_canvas){.clear_color = true, .clear_depth = false, .clear_stencil = false,
         .bg_col = {0.3f, 0.0f, 0.2f}};
 
     lu_timestamp start_time = lu_time_get();
@@ -123,7 +123,7 @@ int main(int argc, char **argv)
     glfwMakeContextCurrent(g_window);
     glfwSwapInterval((int)app_ctx.vsync);
 
-    orx_config_t cfg = {
+    xe_config cfg = {
         .gl_loader = (void *(*)(const char *))glfwGetProcAddress,
         .canvas = app_ctx.canvas,
         .seconds_between_shader_file_changed_checks = 1.0f,
@@ -136,44 +136,44 @@ int main(int argc, char **argv)
     timer = lu_time_get();
 
     /* TODO: Asset map with user-defined paths */
-    orx_image_t owl_atlas = orx_load_image("./assets/owl.png");
-    orx_image_t windmill_atlas = orx_load_image("./assets/windmill.png");
-    orx_image_t tex_test0 = orx_load_image("./assets/tex_test_0.png");
-    orx_image_t tex_test1 = orx_load_image("./assets/tex_test_1.png");
-    orx_image_t tex_test2 = orx_load_image("./assets/tex_test_2.png");
-    orx_image_t tex_test3 = orx_load_image("./assets/tex_test_3.png");
+    xe_image owl_atlas = xe_load_image("./assets/owl.png");
+    xe_image windmill_atlas = xe_load_image("./assets/windmill.png");
+    xe_image tex_test0 = xe_load_image("./assets/tex_test_0.png");
+    xe_image tex_test1 = xe_load_image("./assets/tex_test_1.png");
+    xe_image tex_test2 = xe_load_image("./assets/tex_test_2.png");
+    xe_image tex_test3 = xe_load_image("./assets/tex_test_3.png");
 
     elapsed = lu_time_elapsed(timer);
     timer_data.stb_img_load_ns = elapsed;
     timer = lu_time_get();
     
-    orx_init(&cfg);
+    xe_init(&cfg);
 
-    orx_texture_set(owl_atlas.tex, owl_atlas.data);
+    xe_texture_set(owl_atlas.tex, owl_atlas.data);
     stbi_image_free(owl_atlas.data);
     owl_atlas.data = NULL;
 
-    orx_texture_set(windmill_atlas.tex, windmill_atlas.data);
+    xe_texture_set(windmill_atlas.tex, windmill_atlas.data);
     stbi_image_free(windmill_atlas.data);
     windmill_atlas.data = NULL;
 
-    orx_texture_set(tex_test0.tex, tex_test0.data);
+    xe_texture_set(tex_test0.tex, tex_test0.data);
     stbi_image_free(tex_test0.data);
     tex_test0.data = NULL;
 
-    orx_texture_set(tex_test1.tex, tex_test1.data);
+    xe_texture_set(tex_test1.tex, tex_test1.data);
     stbi_image_free(tex_test1.data);
     tex_test1.data = NULL;
 
-    orx_texture_set(tex_test2.tex, tex_test2.data);
+    xe_texture_set(tex_test2.tex, tex_test2.data);
     stbi_image_free(tex_test2.data);
     tex_test2.data = NULL;
 
-    orx_texture_set(tex_test3.tex, tex_test3.data);
+    xe_texture_set(tex_test3.tex, tex_test3.data);
     stbi_image_free(tex_test3.data);
     tex_test3.data = NULL;
 
-    orx_node_t nodes[] = {
+    xe_node nodes[] = {
         {
             .pos_x = -10.5f,
             .pos_y = -10.0f,
@@ -181,7 +181,7 @@ int main(int argc, char **argv)
             .scale_y = 200.0f,
             .rotation = 0.0f,
             .tex = tex_test0.tex,
-#ifdef ORX_DEBUG
+#ifdef XE_DEBUG
             .name = "Node0"
 #endif
         },
@@ -192,7 +192,7 @@ int main(int argc, char **argv)
             .scale_y = 100.0f,
             .rotation = 0.0f,
             .tex = tex_test1.tex,
-#ifdef ORX_DEBUG
+#ifdef XE_DEBUG
             .name = "Node1"
 #endif
         },
@@ -203,7 +203,7 @@ int main(int argc, char **argv)
             .scale_y = 100.0f,
             .rotation = 0.0f,
             .tex = tex_test2.tex,
-#ifdef ORX_DEBUG
+#ifdef XE_DEBUG
             .name = "Node2"
 #endif
         },
@@ -214,14 +214,14 @@ int main(int argc, char **argv)
             .scale_y = 100.0f,
             .rotation = 0.0f,
             .tex = tex_test3.tex,
-#ifdef ORX_DEBUG
+#ifdef XE_DEBUG
             .name = "Node3"
 #endif
         },
     };
 
     elapsed = lu_time_elapsed(timer);
-    timer_data.orx_init_ns = elapsed;
+    timer_data.xe_init_ns = elapsed;
 
     spBone_setYDown(-1);
     spAtlas *sp_atlas = spAtlas_createFromFile("./assets/owl.atlas", &owl_atlas);
@@ -232,7 +232,7 @@ int main(int argc, char **argv)
         return 1;
     }
     spAnimationStateData *anim_data = spAnimationStateData_create(skel_data);
-    orx_spine_t spine_node = {.skel = spSkeleton_create(skel_data), .anim = spAnimationState_create(anim_data)};
+    xe_spine spine_node = {.skel = spSkeleton_create(skel_data), .anim = spAnimationState_create(anim_data)};
     spSkeleton_setToSetupPose(spine_node.skel);
 
     spine_node.node.tex = owl_atlas.tex;
@@ -269,7 +269,7 @@ int main(int argc, char **argv)
         return 1;
     }
     spAnimationStateData *windmill_anim_data = spAnimationStateData_create(windmill_skel_data);
-    orx_spine_t windmill_spine = {.skel = spSkeleton_create(windmill_skel_data), .anim = spAnimationState_create(windmill_anim_data)};
+    xe_spine windmill_spine = {.skel = spSkeleton_create(windmill_skel_data), .anim = spAnimationState_create(windmill_anim_data)};
     spSkeleton_setToSetupPose(windmill_spine.skel);
     windmill_spine.node.tex = windmill_atlas.tex;
     spSkeleton_updateWorldTransform(windmill_spine.skel, SP_PHYSICS_UPDATE);
@@ -293,8 +293,8 @@ int main(int argc, char **argv)
         up->alpha = (0.5f - lu_minf(y, 0.5f)) * 1.0f;
 
         spSkeleton_setToSetupPose(spine_node.skel);
-        orx_spine_update(&spine_node, lu_time_sec(elapsed));  /* Delta time in seconds to APP_CTX */
-        orx_spine_update(&windmill_spine, lu_time_sec(elapsed));
+        xe_spine_update(&spine_node, lu_time_sec(elapsed));  /* Delta time in seconds to APP_CTX */
+        xe_spine_update(&windmill_spine, lu_time_sec(elapsed));
 
         float curr_time_sec = lu_time_sec(lu_time_elapsed(start_time));
         const float sin_time = sinf(curr_time_sec);
@@ -302,13 +302,13 @@ int main(int argc, char **argv)
         nodes[0].scale_y = 100.0f + cosf(curr_time_sec) * 50.0f;
         nodes[2].rotation = curr_time_sec;
 
-        orx_gfx_sync();
+        xe_gfx_sync();
 
-        orx_spine_draw(&windmill_spine);
-        orx_mesh_t mesh = orx_gfx_add_mesh(QUAD_VERTICES, sizeof(QUAD_VERTICES),
+        xe_spine_draw(&windmill_spine);
+        xe_mesh mesh = xe_gfx_add_mesh(QUAD_VERTICES, sizeof(QUAD_VERTICES),
                                            QUAD_INDICES,  sizeof(QUAD_INDICES));
         for (int i = 0; i < 4; ++i) {
-            orx_draw_idx draw_index = orx_gfx_add_material((orx_material_t){
+            xe_draw_idx draw_index = xe_gfx_add_material((xe_material){
                 .apx = nodes[i].pos_x,
                 .apy = nodes[i].pos_y,
                 .asx = nodes[i].scale_x,
@@ -316,11 +316,11 @@ int main(int argc, char **argv)
                 .arot = nodes[i].rotation,
                 .tex = nodes[i].tex
             });
-            orx_gfx_submit(mesh, draw_index);
+            xe_gfx_submit(mesh, draw_index);
         }
 
-        orx_spine_draw(&spine_node);
-        orx_render(&app_ctx.canvas);
+        xe_spine_draw(&spine_node);
+        xe_render(&app_ctx.canvas);
         glfwSwapBuffers(g_window);
 
         elapsed = lu_time_elapsed(timer);
@@ -344,7 +344,7 @@ int main(int argc, char **argv)
     timer_data.shutdown_time_ns = lu_time_elapsed(timer);
     timer_data.total_time_ns = lu_time_elapsed(start_time);
 
-#ifdef ORX_VERBOSE
+#ifdef XE_VERBOSE
     print_timer_data();
 #endif
     return 0;
@@ -356,7 +356,7 @@ static inline void print_timer_data()
     printf("Init time: %lld ms\n", lu_time_ms(timer_data.init_time_ns));
     printf(" - glfw:\t%lld ms\n", lu_time_ms(timer_data.glfw_init_ns));
     printf(" - stb_img:\t%lld ms\n", lu_time_ms(timer_data.stb_img_load_ns));
-    printf(" - orxata:\t%lld ms\n", lu_time_ms(timer_data.orx_init_ns));
+    printf(" - xe:\t%lld ms\n", lu_time_ms(timer_data.xe_init_ns));
     int64_t sum = 0;
     for (int i = 0; i < 256; ++i) {
         sum += timer_data.frame_time[i];
