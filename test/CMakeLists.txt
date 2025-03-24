@@ -1,12 +1,12 @@
-add_executable(farto)
+add_executable(xet)
 
-set_target_properties(farto PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
+set_target_properties(xet PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
 
-target_sources(farto PRIVATE
+target_sources(xet PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/main.c
 )
 
-target_include_directories(farto PRIVATE
+target_include_directories(xet PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/extern/include
     ${CMAKE_SOURCE_DIR}/extern/llulu/include
@@ -14,9 +14,9 @@ target_include_directories(farto PRIVATE
     ${CMAKE_SOURCE_DIR}/include
 )
 
-target_link_libraries(farto PRIVATE
-    orxata
-    orxata_extern
+target_link_libraries(xet PRIVATE
+    xe
+    xe_extern
     glfw
     spine-c
 )

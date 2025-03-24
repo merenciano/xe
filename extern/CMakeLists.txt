@@ -1,5 +1,5 @@
-add_library(orxata_extern OBJECT)
-set_target_properties(orxata_extern PROPERTIES ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/lib)
+add_library(xe_extern OBJECT)
+set_target_properties(xe_extern PROPERTIES ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/lib)
 
 if (NOT ${CMAKE_C_COMPILER_ID} STREQUAL "TinyCC")
     include(FetchContent)
@@ -14,13 +14,13 @@ if (NOT ${CMAKE_C_COMPILER_ID} STREQUAL "TinyCC")
     FetchContent_MakeAvailable(glfw)
 endif()
 
-target_sources(orxata_extern PRIVATE
+target_sources(xe_extern PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/glad.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/stb_image.c
     ${CMAKE_CURRENT_SOURCE_DIR}/llulu/src/lu_time.c
 )
 
-target_include_directories(orxata_extern PRIVATE
+target_include_directories(xe_extern PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/llulu/include
 )
