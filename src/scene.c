@@ -1,6 +1,174 @@
-#if 0
 #include "scene.h"
+#include "platform.h"
 
+#include <spine/spine.h>
+#include <spine/extension.h>
+
+void xe_scene_spine_update(xe_scene_spine *self, float delta_sec)
+{
+    spAnimationState_update(self->anim, delta_sec);
+	spAnimationState_apply(self->anim, self->skel);
+	spSkeleton_update(self->skel, delta_sec);
+	spSkeleton_updateWorldTransform(self->skel, SP_PHYSICS_UPDATE);
+}
+
+void xe_scene_spine_draw(xe_scene_spine *self)
+{
+    static spSkeletonClipping *g_clipper = NULL;
+	if (!g_clipper) {
+		g_clipper = spSkeletonClipping_create();
+	}
+
+    xe_rend_vtx vertbuf[2048];
+    xe_rend_idx indibuf[2048];
+    xe_rend_vtx *vertices = vertbuf;
+    xe_rend_idx *indices = indibuf;
+    int slot_idx_count = 0;
+    int slot_vtx_count = 0;
+    float *uv = NULL;
+	spSkeleton *sk = self->skel;
+	for (int i = 0; i < sk->slotsCount; ++i) {
+		spSlot *slot = sk->drawOrder[i];
+		spAttachment *attachment = slot->attachment;
+		if (!attachment) {
+			spSkeletonClipping_clipEnd(g_clipper, slot);
+			continue;
+		}
+
+		if (slot->color.a == 0 || !slot->bone->active) {
+			spSkeletonClipping_clipEnd(g_clipper, slot);
+			continue;
+		}
+
+		spColor *attach_color = NULL;
+
+		if (attachment->type == SP_ATTACHMENT_REGION) {
+			spRegionAttachment *region = (spRegionAttachment *)attachment;
+			attach_color = &region->color;
+
+			if (attach_color->a == 0) {
+				spSkeletonClipping_clipEnd(g_clipper, slot);
+				continue;
+			}
+
+            indibuf[0] = 0;
+            indibuf[1] = 1;
+            indibuf[2] = 2;
+            indibuf[3] = 2;
+            indibuf[4] = 3;
+            indibuf[5] = 0;
+            slot_idx_count = 6;
+			slot_vtx_count = 4;
+			spRegionAttachment_computeWorldVertices(region, slot, (float*)vertices, 0, sizeof(xe_rend_vtx) / sizeof(float));
+            uv = region->uvs;
+			self->node.tex = ((xe_rend_img *) (((spAtlasRegion *) region->rendererObject)->page->rendererObject))->tex;
+		} else if (attachment->type == SP_ATTACHMENT_MESH) {
+			spMeshAttachment *mesh = (spMeshAttachment *) attachment;
+			attach_color = &mesh->color;
+
+			// Early out if the slot color is 0
+			if (attach_color->a == 0) {
+				spSkeletonClipping_clipEnd(g_clipper, slot);
+				continue;
+			}
+
+            slot_vtx_count = mesh->super.worldVerticesLength / 2;
+			spVertexAttachment_computeWorldVertices(SUPER(mesh), slot, 0, slot_vtx_count * 2, (float*)vertices, 0, sizeof(xe_rend_vtx) / sizeof(float));
+            uv = mesh->uvs;
+            memcpy(indices, mesh->triangles, mesh->trianglesCount * sizeof(*indices));
+            slot_idx_count = mesh->trianglesCount;
+			self->node.tex = ((xe_rend_img *) (((spAtlasRegion *) mesh->rendererObject)->page->rendererObject))->tex;
+		} else if (attachment->type == SP_ATTACHMENT_CLIPPING) {
+			spClippingAttachment *clip = (spClippingAttachment *) slot->attachment;
+			spSkeletonClipping_clipStart(g_clipper, slot, clip);
+			continue;
+		} else {
+			continue;
+        }
+
+        uint32_t color = (uint8_t)(sk->color.r * slot->color.r * attach_color->r * 255);
+        color |= ((uint8_t)(sk->color.g * slot->color.g * attach_color->g * 255) << 8);
+        color |= ((uint8_t)(sk->color.b * slot->color.b * attach_color->b * 255) << 16);
+        color |= ((uint8_t)(sk->color.a * slot->color.a * attach_color->a * 255) << 24);
+
+        for (int v = 0; v < slot_vtx_count; ++v) {
+            vertices[v].u = *uv++;
+            vertices[v].v = *uv++;
+            vertices[v].color = color;
+        }
+
+		if (spSkeletonClipping_isClipping(g_clipper)) {
+            // TODO: Optimize but first try with spine-cpp-lite compiled as .so for C
+            spSkeletonClipping_clipTriangles(g_clipper, (float*)vertices, slot_vtx_count * 2, indices, slot_idx_count, &vertices->u, sizeof(*vertices));
+            slot_vtx_count = g_clipper->clippedVertices->size >> 1;
+            xe_rend_vtx *vtxit = vertices;
+            float *xyit = g_clipper->clippedVertices->items;
+            float *uvit = g_clipper->clippedUVs->items;
+            for (int j = 0; j < slot_vtx_count; ++j) {
+                vtxit->x = *xyit++;
+                vtxit->u = *uvit++;
+                vtxit->y = *xyit++;
+                (vtxit++)->v = *uvit++;
+            }
+            slot_idx_count = g_clipper->clippedTriangles->size;
+            memcpy(indices, g_clipper->clippedTriangles->items, slot_idx_count * sizeof(*indices));
+		}
+
+        xe_rend_mesh mesh = xe_rend_mesh_add(vertices, slot_vtx_count * sizeof(xe_rend_vtx), indices, slot_idx_count * sizeof(xe_index));
+        xe_rend_draw_id di = xe_rend_material_add((xe_rend_material){
+            .apx = self->node.pos_x, .apy = self->node.pos_y,
+            .asx = self->node.scale_x, .asy = self->node.scale_y,
+            .arot = self->node.rotation, .tex = self->node.tex
+        });
+
+
+        switch (slot->data->blendMode) {
+            case SP_BLEND_MODE_NORMAL:
+                xe_rend_submit(mesh, di);
+                break;
+            case SP_BLEND_MODE_MULTIPLY:
+            	XE_LOG_VERBOSE("Multiply alpha blending not implemented.");
+                xe_assert(0);
+                break;
+            case SP_BLEND_MODE_ADDITIVE:
+            	XE_LOG_VERBOSE("Additive alpha blending not implemented.");
+                xe_assert(0);
+                break;
+            case SP_BLEND_MODE_SCREEN:
+            	XE_LOG_VERBOSE("Screen alpha blending not implemented.");
+                xe_assert(0);
+                break;
+        };
+
+        vertices = vertbuf;
+        indices = indibuf;
+        slot_vtx_count = 0;
+        slot_idx_count = 0;
+
+		spSkeletonClipping_clipEnd(g_clipper, slot);
+	}
+	spSkeletonClipping_clipEnd2(g_clipper);
+}
+
+void _spAtlasPage_createTexture(spAtlasPage *self, const char *path)
+{
+    (void)path;
+    xe_assert(self->atlas->rendererObject);
+    self->rendererObject = self->atlas->rendererObject;
+    XE_LOG_VERBOSE("Spine atlas: %s", ((xe_rend_img*)self->rendererObject)->path);
+}
+
+void _spAtlasPage_disposeTexture(spAtlasPage *self)
+{
+    (void)self;
+}
+
+char *_spUtil_readFile(const char *path, int *length)
+{
+    return _spReadFile(path, length);
+}
+
+#if 0
 #define XE_SCENE_ITER_STACK_CAP 64
 
 const xe_image_desc g_images[] = {

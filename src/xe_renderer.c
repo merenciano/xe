@@ -1,18 +1,11 @@
-#include "xe.h"
+#include "xe_renderer.h"
 #include "platform.h"
 
 #include <llulu/lu_time.h>
-#include <spine/spine.h>
-#include <spine/extension.h>
 #include <glad/glad.h>
 #include <stb/stb_image.h>
-#include <sys/stat.h>
 
-#include <stdbool.h>
-#include <stdint.h>
 #include <time.h>
-#include <stdio.h>
-#include <assert.h>
 #include <string.h>
 
 enum {
@@ -46,7 +39,7 @@ typedef struct xe_shader_data {
 
 typedef struct xe_texarr_pool {
     uint32_t id[XE_MAX_TEXTURE_ARRAYS];
-    xe_texture_format fmt[XE_MAX_TEXTURE_ARRAYS];
+    xe_rend_texfmt fmt[XE_MAX_TEXTURE_ARRAYS];
     int count[XE_MAX_TEXTURE_ARRAYS];
 } xe_texarr_pool;
 
@@ -86,17 +79,17 @@ typedef struct xe_gl_renderer {
 } xe_gl_renderer;
 
 enum {
-    XE_VERTICES_MAP_SIZE = XE_MAX_VERTICES * 3 * sizeof(xe_vertex),
-    XE_INDICES_MAP_SIZE = XE_MAX_INDICES * 3 * sizeof(xe_index),
+    XE_VERTICES_MAP_SIZE = XE_MAX_VERTICES * 3 * sizeof(xe_rend_vtx),
+    XE_INDICES_MAP_SIZE = XE_MAX_INDICES * 3 * sizeof(xe_rend_idx),
     XE_UNIFORMS_MAP_SIZE = 3 * sizeof(xe_shader_data),
     XE_DRAW_INDIRECT_MAP_SIZE = XE_MAX_DRAW_INDIRECT * 3 * sizeof(xe_drawcmd),
 };
 
 static xe_gl_renderer g_r; // Depends on zero init
-static xe_config g_config;
+static xe_rend_config g_config;
 
-static inline void
-xe_gfx_sync(void)
+inline void
+xe_rend_sync(void)
 {
     lu_timestamp start = lu_time_get();
     GLenum err = glClientWaitSync(g_r.fence[g_r.phase], GL_SYNC_FLUSH_COMMANDS_BIT, XE_MAX_SYNC_TIMEOUT_NANOSEC);
@@ -127,11 +120,11 @@ xe_shader_gpu_setup(void)
     g_r.view_proj[15] = 1.0f;
 
     g_r.program_id = glCreateProgram();
-    xe_shader_reload();
+    xe_rend_shader_reload();
 }
 
 void
-xe_shader_reload(void)
+xe_rend_shader_reload(void)
 {
     char src_buf[XE_MAX_SHADER_SOURCE_LEN];
     const GLchar *src1 = &src_buf[0];
@@ -145,7 +138,7 @@ xe_shader_reload(void)
     size_t len = fread(&src_buf[0], 1, XE_MAX_SHADER_SOURCE_LEN- 1, f);
     src_buf[len] = '\0'; // TODO: pass len to glShaderSource instead of this (remove the '- 1' in the fread too).
     fclose(f);
-    assert(len < XE_MAX_SHADER_SOURCE_LEN);
+    xe_assert(len < XE_MAX_SHADER_SOURCE_LEN);
 
     GLchar out_log[XE_MAX_ERROR_MSG_LEN];
     GLint err;
@@ -167,7 +160,7 @@ xe_shader_reload(void)
         printf("Could not open shader source %s.\n", g_config.frag_shader_path);
         return;
     }
-    len = fread(&src_buf[0], 1, XE_MAX_SHADER_SOURCE_LEN- 1, f);
+    len = fread(&src_buf[0], 1, XE_MAX_SHADER_SOURCE_LEN - 1, f);
     src_buf[len] = '\0';
     fclose(f);
     assert(len < XE_MAX_SHADER_SOURCE_LEN);
@@ -231,7 +224,7 @@ xe_shader_check_reload(void)
             if (reload) {
                 last_modified = mtime;
                 XE_LOG("Reloading shaders.");
-                xe_shader_reload();
+                xe_rend_shader_reload();
             }
         }
         timer = time(NULL);
@@ -243,7 +236,7 @@ xe_mesh_gpu_setup(void)
 {
     glCreateVertexArrays(1, &g_r.vao_id);
     glBindVertexArray(g_r.vao_id);
-    glVertexArrayVertexBuffer(g_r.vao_id, 0, g_r.vertices.id, 0, sizeof(xe_vertex));
+    glVertexArrayVertexBuffer(g_r.vao_id, 0, g_r.vertices.id, 0, sizeof(xe_rend_vtx));
     glVertexArrayElementBuffer(g_r.vao_id, g_r.indices.id);
 
     glEnableVertexArrayAttrib(g_r.vao_id, 0);
@@ -259,7 +252,7 @@ xe_mesh_gpu_setup(void)
     glVertexArrayAttribBinding(g_r.vao_id, 2, 0);
 }
 
-static const int g_tex_fmt_lut_internal[XE_PIXFMT_COUNT] = {
+static const int g_tex_fmt_lut_internal[XE_TEX_FMT_COUNT] = {
     GL_R8,
     GL_RG8,
     GL_RGB8,
@@ -275,7 +268,7 @@ static const int g_tex_fmt_lut_internal[XE_PIXFMT_COUNT] = {
     GL_RGBA32F,
 };
 
-static const int g_tex_fmt_lut_format[XE_PIXFMT_COUNT] = {
+static const int g_tex_fmt_lut_format[XE_TEX_FMT_COUNT] = {
     GL_RED,
     GL_RG,
     GL_RGB,
@@ -291,7 +284,7 @@ static const int g_tex_fmt_lut_format[XE_PIXFMT_COUNT] = {
     GL_RGBA,
 };
 
-static const int g_tex_fmt_lut_type[XE_PIXFMT_COUNT] = {
+static const int g_tex_fmt_lut_type[XE_TEX_FMT_COUNT] = {
     GL_UNSIGNED_BYTE,
     GL_UNSIGNED_BYTE,
     GL_UNSIGNED_BYTE,
@@ -313,59 +306,59 @@ xe_texture_gpu_setup(void)
     glCreateTextures(GL_TEXTURE_2D_ARRAY, g_r.tex_count, g_r.tex.id);
     glBindTextures(0, g_r.tex_count, g_r.tex.id);
     for (int i = 0; i < g_r.tex_count; ++i) {
-        const xe_texture_format *fmt = &g_r.tex.fmt[i];
-        glTextureStorage3D(g_r.tex.id[i], 1, g_tex_fmt_lut_internal[fmt->pixel_fmt], fmt->width, fmt->height, g_r.tex.count[i]);
+        const xe_rend_texfmt *fmt = &g_r.tex.fmt[i];
+        glTextureStorage3D(g_r.tex.id[i], 1, g_tex_fmt_lut_internal[fmt->format], fmt->width, fmt->height, g_r.tex.count[i]);
     }
 }
 
-xe_texture
-xe_texture_reserve(xe_texture_format fmt)
+xe_rend_tex
+xe_rend_tex_reserve(xe_rend_texfmt fmt)
 {
     assert(fmt.width + fmt.height != 0);
-    assert(fmt.pixel_fmt >= 0 && fmt.pixel_fmt < XE_PIXFMT_COUNT && "Invalid pixel format.");
+    assert(fmt.format >= 0 && fmt.format < XE_TEX_FMT_COUNT && "Invalid pixel format.");
 
     // Look for an array of textures of the same format and push the new tex.
     for (int i = 0; i < g_r.tex_count; ++i) {
         if (!memcmp(&g_r.tex.fmt[i], &fmt, sizeof(fmt))) {
             int layer = g_r.tex.count[i]++;
-            return (xe_texture){i, layer};
+            return (xe_rend_tex){i, layer};
         }
     }
 
     // If it is the first tex with that format, add a new vector to the pool.
     if (g_r.tex_count >= XE_MAX_TEXTURE_ARRAYS) {
         printf("Error: xe_texture_reserve failed (full texture pool). Consider increasing XE_MAX_TEXTURE_ARRAYS.\n");
-        return (xe_texture){-1, -1};
+        return (xe_rend_tex){-1, -1};
     }
 
     int index = g_r.tex_count++;
     g_r.tex.fmt[index] = fmt;
     g_r.tex.count[index] = 1;
-    return (xe_texture){index, 0};
+    return (xe_rend_tex){index, 0};
 }
 
 void
-xe_texture_set(xe_texture tex, void *data)
+xe_rend_tex_set(xe_rend_tex tex, void *data)
 {
     assert(data);
-    const xe_texture_format *fmt = &g_r.tex.fmt[tex.idx];
-    glTextureSubImage3D(g_r.tex.id[tex.idx], 0, 0, 0, (int)tex.layer, fmt->width, fmt->height, 1, g_tex_fmt_lut_format[fmt->pixel_fmt], g_tex_fmt_lut_type[fmt->pixel_fmt], data);
+    const xe_rend_texfmt *fmt = &g_r.tex.fmt[tex.idx];
+    glTextureSubImage3D(g_r.tex.id[tex.idx], 0, 0, 0, (int)tex.layer, fmt->width, fmt->height, 1, g_tex_fmt_lut_format[fmt->format], g_tex_fmt_lut_type[fmt->format], data);
 }
 
-xe_image
-xe_load_image(const char *path)
+xe_rend_img
+xe_rend_img_load(const char *path)
 {
-    xe_image img = {.path = path, .tex = {-1, -1} };
+    xe_rend_img img = {.path = path, .tex = {-1, -1} };
     img.data = stbi_load(img.path, &img.w, &img.h, &img.channels, 0);
 
     if (!img.data) {
         printf("Error loading the image %s.\nAborting execution.\n", img.path);
         exit(1);
     } else {
-        img.tex = xe_texture_reserve((xe_texture_format){
+        img.tex = xe_rend_tex_reserve((xe_rend_texfmt){
             .width = img.w,
             .height = img.h,
-            .pixel_fmt = img.channels == 4 ? XE_PIXFMT_RGBA : XE_PIXFMT_RGB,
+            .format = img.channels == 4 ? XE_TEX_RGBA : XE_TEX_RGB,
             .flags = 0
         });
         assert(img.tex.idx >= 0);
@@ -374,7 +367,7 @@ xe_load_image(const char *path)
 }
 
 bool
-xe_init(xe_config *cfg)
+xe_rend_init(xe_rend_config *cfg)
 {
     if (!cfg) {
         return false;
@@ -418,21 +411,21 @@ xe_init(xe_config *cfg)
     return true;
 }
 
-xe_mesh
-xe_gfx_add_mesh(const void *vert, size_t vert_size, const void *indices, size_t indices_size)
+xe_rend_mesh
+xe_rend_mesh_add(const void *vert, size_t vert_size, const void *indices, size_t indices_size)
 {
 #ifdef XE_DEBUG
-    xe_gfx_sync();
+    xe_rend_sync();
 #endif
     assert(vert_size < (XE_VERTICES_MAP_SIZE / 3));
     assert(indices_size < (XE_INDICES_MAP_SIZE / 3));
 
-    xe_mesh mesh = { .idx_count = indices_size / sizeof(xe_index)};
+    xe_rend_mesh mesh = { .idx_count = indices_size / sizeof(xe_rend_idx)};
 
     if ((g_r.vertices.head + vert_size) >= XE_VERTICES_MAP_SIZE) {
         g_r.vertices.head = 0;
     }
-    mesh.base_vtx = g_r.vertices.head / sizeof(xe_vertex);
+    mesh.base_vtx = g_r.vertices.head / sizeof(xe_rend_vtx);
     void *dst = (char*)g_r.vertices.data + g_r.vertices.head;
     memcpy(dst, vert, vert_size);
     g_r.vertices.head += vert_size;
@@ -440,18 +433,18 @@ xe_gfx_add_mesh(const void *vert, size_t vert_size, const void *indices, size_t 
     if ((g_r.indices.head + indices_size) >= XE_INDICES_MAP_SIZE) {
         g_r.indices.head = 0;
     }
-    mesh.first_idx = g_r.indices.head / sizeof(xe_index);
+    mesh.first_idx = g_r.indices.head / sizeof(xe_rend_idx);
     dst = (char*)g_r.indices.data + g_r.indices.head;
     memcpy(dst, indices, indices_size);
     g_r.indices.head += indices_size;
     return mesh;
 }
 
-xe_draw_idx
-xe_gfx_add_material(xe_material mat)
+xe_rend_draw_id
+xe_rend_material_add(xe_rend_material mat)
 {
 #ifdef XE_DEBUG
-    xe_gfx_sync();
+    xe_rend_sync();
 #endif
     assert(((g_r.uniforms.head - offsetof(xe_shader_data, data)) % sizeof(xe_shader_shape_data)) == 0);
     xe_shader_shape_data *uniform = (void*)((char*)g_r.uniforms.data + g_r.uniforms.head);
@@ -469,10 +462,10 @@ xe_gfx_add_material(xe_material mat)
 }
 
 void
-xe_gfx_submit(xe_mesh mesh, xe_draw_idx drawidx)
+xe_rend_submit(xe_rend_mesh mesh, xe_rend_draw_id drawidx)
 {
 #ifdef XE_DEBUG
-    xe_gfx_sync();
+    xe_rend_sync();
 #endif
     size_t frame_start = g_r.phase * (XE_DRAW_INDIRECT_MAP_SIZE / 3);
     assert(g_r.drawlist.head - frame_start < XE_DRAW_INDIRECT_MAP_SIZE / 3);
@@ -487,7 +480,7 @@ xe_gfx_submit(xe_mesh mesh, xe_draw_idx drawidx)
     g_r.drawlist.head += sizeof(xe_drawcmd);
 }
 
-void xe_render(xe_canvas *canvas)
+void xe_rend_render(xe_rend_canvas *canvas)
 {
     xe_shader_check_reload(); // TODO: async
 
@@ -497,7 +490,7 @@ void xe_render(xe_canvas *canvas)
         glViewport(0, 0, canvas->w, canvas->h);
     }
 
-    xe_gfx_sync();
+    xe_rend_sync();
     memcpy(g_r.uniforms.data + g_r.phase * sizeof(xe_shader_data), g_r.view_proj, sizeof(g_r.view_proj));
     glBindBufferRange(GL_UNIFORM_BUFFER, 0, g_r.uniforms.id, g_r.phase * sizeof(xe_shader_data), sizeof(xe_shader_data));
 
@@ -511,182 +504,10 @@ void xe_render(xe_canvas *canvas)
     assert(cmdbuf_size < (XE_DRAW_INDIRECT_MAP_SIZE / 3) && "The draw command list is larger than a third of the mapped buffer.");
     size_t cmdbuf_count = cmdbuf_size / sizeof(xe_drawcmd);
     assert(cmdbuf_count < XE_MAX_DRAW_INDIRECT);
-    glMultiDrawElementsIndirect(GL_TRIANGLES, sizeof(xe_index) == 4 ? GL_UNSIGNED_INT : GL_UNSIGNED_SHORT, (void*)offset, cmdbuf_count, 0);
+    glMultiDrawElementsIndirect(GL_TRIANGLES, sizeof(xe_rend_idx) == 4 ? GL_UNSIGNED_INT : GL_UNSIGNED_SHORT, (void*)offset, cmdbuf_count, 0);
 
     g_r.fence[g_r.phase] = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
     g_r.phase = (g_r.phase + 1) % 3;
     g_r.uniforms.head = g_r.phase * sizeof(xe_shader_data) + offsetof(xe_shader_data, data);
     g_r.drawlist.head = g_r.phase * (XE_DRAW_INDIRECT_MAP_SIZE / 3);
-}
-
-void xe_spine_update(xe_spine *self, float delta_sec)
-{
-    spAnimationState_update(self->anim, delta_sec);
-	spAnimationState_apply(self->anim, self->skel);
-	spSkeleton_update(self->skel, delta_sec);
-	spSkeleton_updateWorldTransform(self->skel, SP_PHYSICS_UPDATE);
-}
-
-void xe_spine_draw(xe_spine *self)
-{
-    static spSkeletonClipping *g_clipper = NULL;
-	if (!g_clipper) {
-		g_clipper = spSkeletonClipping_create();
-	}
-
-    xe_vertex vertbuf[2048];
-    xe_index indibuf[2048];
-    xe_vertex *vertices = vertbuf;
-    xe_index *indices = indibuf;
-    int slot_idx_count = 0;
-    int slot_vtx_count = 0;
-    float *uv = NULL;
-	spSkeleton *sk = self->skel;
-	for (int i = 0; i < sk->slotsCount; ++i) {
-		spSlot *slot = sk->drawOrder[i];
-		spAttachment *attachment = slot->attachment;
-		if (!attachment) {
-			spSkeletonClipping_clipEnd(g_clipper, slot);
-			continue;
-		}
-
-		if (slot->color.a == 0 || !slot->bone->active) {
-			spSkeletonClipping_clipEnd(g_clipper, slot);
-			continue;
-		}
-
-		spColor *attach_color = NULL;
-
-		if (attachment->type == SP_ATTACHMENT_REGION) {
-			spRegionAttachment *region = (spRegionAttachment *)attachment;
-			attach_color = &region->color;
-
-			if (attach_color->a == 0) {
-				spSkeletonClipping_clipEnd(g_clipper, slot);
-				continue;
-			}
-
-            indibuf[0] = 0;
-            indibuf[1] = 1;
-            indibuf[2] = 2;
-            indibuf[3] = 2;
-            indibuf[4] = 3;
-            indibuf[5] = 0;
-            slot_idx_count = 6;
-			slot_vtx_count = 4;
-			spRegionAttachment_computeWorldVertices(region, slot, (float*)vertices, 0, sizeof(xe_vertex) / sizeof(float));
-            uv = region->uvs;
-			self->node.tex = ((xe_image *) (((spAtlasRegion *) region->rendererObject)->page->rendererObject))->tex;
-		} else if (attachment->type == SP_ATTACHMENT_MESH) {
-			spMeshAttachment *mesh = (spMeshAttachment *) attachment;
-			attach_color = &mesh->color;
-
-			// Early out if the slot color is 0
-			if (attach_color->a == 0) {
-				spSkeletonClipping_clipEnd(g_clipper, slot);
-				continue;
-			}
-
-            slot_vtx_count = mesh->super.worldVerticesLength / 2;
-			spVertexAttachment_computeWorldVertices(SUPER(mesh), slot, 0, slot_vtx_count * 2, (float*)vertices, 0, sizeof(xe_vertex) / sizeof(float));
-            uv = mesh->uvs;
-            memcpy(indices, mesh->triangles, mesh->trianglesCount * sizeof(*indices));
-            slot_idx_count = mesh->trianglesCount;
-			self->node.tex = ((xe_image *) (((spAtlasRegion *) mesh->rendererObject)->page->rendererObject))->tex;
-		} else if (attachment->type == SP_ATTACHMENT_CLIPPING) {
-			spClippingAttachment *clip = (spClippingAttachment *) slot->attachment;
-			spSkeletonClipping_clipStart(g_clipper, slot, clip);
-			continue;
-		} else {
-			continue;
-        }
-
-        uint32_t color = (uint8_t)(sk->color.r * slot->color.r * attach_color->r * 255);
-        color |= ((uint8_t)(sk->color.g * slot->color.g * attach_color->g * 255) << 8);
-        color |= ((uint8_t)(sk->color.b * slot->color.b * attach_color->b * 255) << 16);
-        color |= ((uint8_t)(sk->color.a * slot->color.a * attach_color->a * 255) << 24);
-
-        for (int v = 0; v < slot_vtx_count; ++v) {
-            vertices[v].u = *uv++;
-            vertices[v].v = *uv++;
-            vertices[v].color = color;
-        }
-
-		if (spSkeletonClipping_isClipping(g_clipper)) {
-            // TODO: Optimize but first try with spine-cpp-lite compiled as .so for C
-            spSkeletonClipping_clipTriangles(g_clipper, (float*)vertices, slot_vtx_count * 2, indices, slot_idx_count, &vertices->u, sizeof(*vertices));
-            slot_vtx_count = g_clipper->clippedVertices->size >> 1;
-            xe_vertex *vtxit = vertices;
-            float *xyit = g_clipper->clippedVertices->items;
-            float *uvit = g_clipper->clippedUVs->items;
-            for (int j = 0; j < slot_vtx_count; ++j) {
-                vtxit->x = *xyit++;
-                vtxit->u = *uvit++;
-                vtxit->y = *xyit++;
-                (vtxit++)->v = *uvit++;
-            }
-            slot_idx_count = g_clipper->clippedTriangles->size;
-            memcpy(indices, g_clipper->clippedTriangles->items, slot_idx_count * sizeof(*indices));
-		}
-
-        xe_mesh shape = xe_gfx_add_mesh(vertices, slot_vtx_count * sizeof(xe_vertex), indices, slot_idx_count * sizeof(xe_index));
-        xe_draw_idx di = xe_gfx_add_material((xe_material){
-            .apx = self->node.pos_x, .apy = self->node.pos_y,
-            .asx = self->node.scale_x, .asy = self->node.scale_y,
-            .arot = self->node.rotation, .tex = self->node.tex
-        });
-
-
-        switch (slot->data->blendMode) {
-            case SP_BLEND_MODE_NORMAL:
-                xe_gfx_submit(shape, di);
-                break;
-            case SP_BLEND_MODE_MULTIPLY:
-#ifdef XE_VERBOSE
-            	printf("Multiply alpha blending not implemented.\n");
-#endif /* XE_VERBOSE */
-                assert(0);
-                break;
-            case SP_BLEND_MODE_ADDITIVE:
-#ifdef XE_VERBOSE
-            	printf("Additive alpha blending not implemented.\n");
-#endif /* XE_VERBOSE */
-                assert(0);
-                break;
-            case SP_BLEND_MODE_SCREEN:
-#ifdef XE_VERBOSE
-            	printf("Screen alpha blending not implemented.\n");
-#endif /* XE_VERBOSE */
-                assert(0);
-                break;
-        };
-
-        vertices = vertbuf;
-        indices = indibuf;
-        slot_vtx_count = 0;
-        slot_idx_count = 0;
-
-		spSkeletonClipping_clipEnd(g_clipper, slot);
-	}
-	spSkeletonClipping_clipEnd2(g_clipper);
-}
-
-void _spAtlasPage_createTexture(spAtlasPage *self, const char *path)
-{
-    (void)path;
-    assert(self->atlas->rendererObject);
-    self->rendererObject = self->atlas->rendererObject;
-#ifdef XE_VERBOSE
-    printf("Spine atlas: %s\n", ((xe_image*)self->rendererObject)->path);
-#endif
-}
-
-void _spAtlasPage_disposeTexture(spAtlasPage *self)
-{
-    (void)self;
-}
-
-char *_spUtil_readFile(const char *path, int *length)
-{
-    return _spReadFile(path, length);
 }

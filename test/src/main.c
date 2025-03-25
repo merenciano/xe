@@ -35,19 +35,7 @@ static const xe_vertex QUAD_VERTICES[] = {
       .color = 0xFF00FF00 }
 };
 
-static const xe_index QUAD_INDICES[] = { 0, 1, 2, 0, 2, 3 };
-
-/* TODO: To app_ctx */
-struct {
-    int64_t frame_count;
-    int64_t glfw_init_ns;
-    int64_t xe_init_ns;
-    int64_t stb_img_load_ns;
-    int64_t frame_time[256];
-    int64_t init_time_ns;
-    int64_t shutdown_time_ns;
-    int64_t total_time_ns;
-} timer_data;
+static const xe_rend_idx QUAD_INDICES[] = { 0, 1, 2, 0, 2, 3 };
 
 struct {
     const char *name;
@@ -63,9 +51,21 @@ struct {
     float mouse_x;
     float mouse_y;
     bool close;
+
+    /* Profiling timers */
+    struct {
+        int64_t frame_count;
+        int64_t glfw_init_ns;
+        int64_t xe_init_ns;
+        int64_t stb_img_load_ns;
+        int64_t frame_time[256];
+        int64_t init_time_ns;
+        int64_t shutdown_time_ns;
+        int64_t total_time_ns;
+    } timers_data;
 } app_ctx;
 
-static inline void print_timer_data();
+static inline void print_timers_data();
 
 GLFWwindow *g_window;
 
@@ -127,7 +127,7 @@ int main(int argc, char **argv)
     glfwMakeContextCurrent(g_window);
     glfwSwapInterval((int)app_ctx.vsync);
 
-    xe_config cfg = {
+    xe_rend_config cfg = {
         .gl_loader = (void *(*)(const char *))glfwGetProcAddress,
         .canvas = app_ctx.canvas,
         .seconds_between_shader_file_changed_checks = 1.0f,
@@ -136,7 +136,7 @@ int main(int argc, char **argv)
     };
 
     int64_t elapsed = lu_time_elapsed(timer);
-    timer_data.glfw_init_ns = elapsed;
+    app_ctx.timers_data.glfw_init_ns = elapsed;
     timer = lu_time_get();
 
     /* TODO: Asset map with user-defined paths */
@@ -148,20 +148,20 @@ int main(int argc, char **argv)
     xe_image tex_test3 = xe_load_image("./assets/tex_test_3.png");
 
     elapsed = lu_time_elapsed(timer);
-    timer_data.stb_img_load_ns = elapsed;
+    app_ctx.timers_data.stb_img_load_ns = elapsed;
     timer = lu_time_get();
     
-    xe_init(&cfg);
+    xe_rend_init(&cfg);
 
-    xe_texture_set(owl_atlas.tex, owl_atlas.data);
+    xe_rend_tex_set(owl_atlas.tex, owl_atlas.data);
     stbi_image_free(owl_atlas.data);
     owl_atlas.data = NULL;
 
-    xe_texture_set(windmill_atlas.tex, windmill_atlas.data);
+    xe_rend_tex_set(windmill_atlas.tex, windmill_atlas.data);
     stbi_image_free(windmill_atlas.data);
     windmill_atlas.data = NULL;
 
-    xe_texture_set(tex_test0.tex, tex_test0.data);
+    xe_rend_tex_set(tex_test0.tex, tex_test0.data);
     stbi_image_free(tex_test0.data);
     tex_test0.data = NULL;
 
@@ -225,7 +225,7 @@ int main(int argc, char **argv)
     };
 
     elapsed = lu_time_elapsed(timer);
-    timer_data.xe_init_ns = elapsed;
+    app_ctx.timers_data.xe_init_ns = elapsed;
 
     spBone_setYDown(-1);
     spAtlas *sp_atlas = spAtlas_createFromFile("./assets/owl.atlas", &owl_atlas);
@@ -284,9 +284,10 @@ int main(int argc, char **argv)
     windmill_spine.node.rotation = 0.0f;
     spAnimationState_setAnimationByName(windmill_spine.anim, 0, "animation", true);
 
-    timer_data.init_time_ns = lu_time_elapsed(start_time);
+    app_ctx.timers_data.init_time_ns = lu_time_elapsed(start_time);
     timer = lu_time_get();
 
+    glfwSetWindowSize(g_window, 400, 300);
     while(!app_ctx.close) {
         glfwGetWindowSize(g_window, &app_ctx.window_width, &app_ctx.window_height);
         float x = app_ctx.mouse_x / app_ctx.window_width;
@@ -306,13 +307,13 @@ int main(int argc, char **argv)
         nodes[0].scale_y = 100.0f + cosf(curr_time_sec) * 50.0f;
         nodes[2].rotation = curr_time_sec;
 
-        xe_gfx_sync();
+        xe_rend_sync();
 
         xe_spine_draw(&windmill_spine);
         xe_mesh mesh = xe_gfx_add_mesh(QUAD_VERTICES, sizeof(QUAD_VERTICES),
                                            QUAD_INDICES,  sizeof(QUAD_INDICES));
         for (int i = 0; i < 4; ++i) {
-            xe_draw_idx draw_index = xe_gfx_add_material((xe_material){
+            xe_rend_draw_id draw_index = xe_gfx_add_material((xe_material){
                 .apx = nodes[i].pos_x,
                 .apy = nodes[i].pos_y,
                 .asx = nodes[i].scale_x,
@@ -324,14 +325,14 @@ int main(int argc, char **argv)
         }
 
         xe_spine_draw(&spine_node);
-        xe_render(&app_ctx.canvas);
+        xe_rend_render(&app_ctx.canvas);
         glfwSwapBuffers(g_window);
 
         elapsed = lu_time_elapsed(timer);
         timer = lu_time_get();
 
-        timer_data.frame_time[timer_data.frame_count % 256] = elapsed;
-        timer_data.frame_count++;
+        app_ctx.timers_data.frame_time[app_ctx.timers_data.frame_count % 256] = elapsed;
+        app_ctx.timers_data.frame_count++;
 
         sprintf(app_ctx.window_title, "%s  |  %f fps", app_ctx.name, 1.0f / lu_time_sec(elapsed));
         glfwSetWindowTitle(g_window, app_ctx.window_title);
@@ -345,28 +346,28 @@ int main(int argc, char **argv)
     glfwTerminate();
 #endif /* APP_PATHETIC_SHUTDOWN */
 
-    timer_data.shutdown_time_ns = lu_time_elapsed(timer);
-    timer_data.total_time_ns = lu_time_elapsed(start_time);
+    app_ctx.timers_data.shutdown_time_ns = lu_time_elapsed(timer);
+    app_ctx.timers_data.total_time_ns = lu_time_elapsed(start_time);
 
 #ifdef XE_VERBOSE
-    print_timer_data();
+    print_timers_data();
 #endif
     return 0;
 }
 
-static inline void print_timer_data()
+static inline void print_timers_data()
 {
-    XE_LOG(" * Report (%lld frames, %.2f seconds) * \n", timer_data.frame_count, lu_time_sec(timer_data.total_time_ns));
-    XE_LOG("Init time: %lld ms\n", lu_time_ms(timer_data.init_time_ns));
-    XE_LOG(" - glfw:\t%lld ms\n", lu_time_ms(timer_data.glfw_init_ns));
-    XE_LOG(" - stb_img:\t%lld ms\n", lu_time_ms(timer_data.stb_img_load_ns));
-    XE_LOG(" - xe:\t%lld ms\n", lu_time_ms(timer_data.xe_init_ns));
+    XE_LOG(" * Report (%lld frames, %.2f seconds) * \n", app_ctx.timers_data.frame_count, lu_time_sec(app_ctx.timers_data.total_time_ns));
+    XE_LOG("Init time: %lld ms\n", lu_time_ms(app_ctx.timers_data.init_time_ns));
+    XE_LOG(" - glfw:\t%lld ms\n", lu_time_ms(app_ctx.timers_data.glfw_init_ns));
+    XE_LOG(" - stb_img:\t%lld ms\n", lu_time_ms(app_ctx.timers_data.stb_img_load_ns));
+    XE_LOG(" - xe:\t%lld ms\n", lu_time_ms(app_ctx.timers_data.xe_init_ns));
     int64_t sum = 0;
     for (int i = 0; i < 256; ++i) {
-        sum += timer_data.frame_time[i];
+        sum += app_ctx.timers_data.frame_time[i];
     }
     sum /= 256;
     double sum_d = sum;
     XE_LOG("Last 256 frame times average: %.2f ms\n", sum / 1000000.0f);
-    XE_LOG("Shutdown: %lld ms\n", lu_time_ms(timer_data.shutdown_time_ns));
+    XE_LOG("Shutdown: %lld ms\n", lu_time_ms(app_ctx.timers_data.shutdown_time_ns));
 }

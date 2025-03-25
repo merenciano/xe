@@ -14,6 +14,7 @@ target_sources(xe PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/xe.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/scene.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/platform.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/xe_renderer.c
 )
 
 target_include_directories(xe PRIVATE
