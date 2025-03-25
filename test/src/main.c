@@ -1,4 +1,5 @@
 #include "xe.h"
+#include "platform.h"
 #include "spine/AnimationState.h"
 #include "spine/Skeleton.h"
 
@@ -87,6 +88,9 @@ void on_mouse_motion(GLFWwindow* window, double x, double y)
 
 int main(int argc, char **argv)
 {
+    xe_plat_desc plat_desc = {.log_filename = "log.txt"};
+    xe_plat_init(&plat_desc);
+
     app_ctx.name = "XE TEST";
     app_ctx.window_width = 2280;
     app_ctx.window_height = 1860;
@@ -352,17 +356,17 @@ int main(int argc, char **argv)
 
 static inline void print_timer_data()
 {
-    printf(" * Report (%lld frames, %.2f seconds) * \n", timer_data.frame_count, lu_time_sec(timer_data.total_time_ns));
-    printf("Init time: %lld ms\n", lu_time_ms(timer_data.init_time_ns));
-    printf(" - glfw:\t%lld ms\n", lu_time_ms(timer_data.glfw_init_ns));
-    printf(" - stb_img:\t%lld ms\n", lu_time_ms(timer_data.stb_img_load_ns));
-    printf(" - xe:\t%lld ms\n", lu_time_ms(timer_data.xe_init_ns));
+    XE_LOG(" * Report (%lld frames, %.2f seconds) * \n", timer_data.frame_count, lu_time_sec(timer_data.total_time_ns));
+    XE_LOG("Init time: %lld ms\n", lu_time_ms(timer_data.init_time_ns));
+    XE_LOG(" - glfw:\t%lld ms\n", lu_time_ms(timer_data.glfw_init_ns));
+    XE_LOG(" - stb_img:\t%lld ms\n", lu_time_ms(timer_data.stb_img_load_ns));
+    XE_LOG(" - xe:\t%lld ms\n", lu_time_ms(timer_data.xe_init_ns));
     int64_t sum = 0;
     for (int i = 0; i < 256; ++i) {
         sum += timer_data.frame_time[i];
     }
     sum /= 256;
     double sum_d = sum;
-    printf("Last 256 frame times average: %.2f ms\n", sum / 1000000.0f);
-    printf("Shutdown: %lld ms\n", lu_time_ms(timer_data.shutdown_time_ns));
+    XE_LOG("Last 256 frame times average: %.2f ms\n", sum / 1000000.0f);
+    XE_LOG("Shutdown: %lld ms\n", lu_time_ms(timer_data.shutdown_time_ns));
 }

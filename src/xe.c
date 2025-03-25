@@ -1,4 +1,5 @@
 #include "xe.h"
+#include "platform.h"
 
 #include <llulu/lu_time.h>
 #include <spine/spine.h>
@@ -201,65 +202,39 @@ xe_shader_reload(void)
 }
 
 
-/* TODO: Move xe_shader_check_reload to platform module. And call it async  */
-#ifndef _WIN32
-#define XE_STAT_TYPE struct stat
-#define XE_STAT_FUNC stat
-#else
-#define XE_STAT_TYPE struct _stat
-#define XE_STAT_FUNC _stat
-#endif
-
 static void
 xe_shader_check_reload(void)
 {
     if (g_config.seconds_between_shader_file_changed_checks > 0.0f) {
-        static time_t timer;
-        static time_t last_modified;
+        static int64_t timer;
+        static int64_t last_modified;
         if (!timer) {
             assert(!last_modified);
-            time(&timer);
+            timer = time(NULL);
             last_modified = timer;
         }
 
         if (difftime(time(NULL), timer) > g_config.seconds_between_shader_file_changed_checks) {
-            XE_STAT_TYPE st;
-
-            int err = XE_STAT_FUNC(g_config.vert_shader_path, &st);
-            if (err) {
-                if (err == -1) {
-                    printf("%s not found.\n", g_config.vert_shader_path);
-                } else if (err == 22) {
-                    printf("Invalid parameter in _stat (vert).\n");
-                }
-            } else {
-                if (difftime(st.st_mtime, last_modified) > 0.0) {
-                    last_modified = st.st_mtime;
-#ifdef XE_VERBOSE
-                    printf("Reloading shaders.\n");
-#endif
-                    xe_shader_reload();
-                } else {
-                    err = XE_STAT_FUNC(g_config.frag_shader_path, &st);
-                    if (err) {
-                        if (err == -1) {
-                            printf("%s not found.\n", g_config.frag_shader_path);
-                        } else if (err == 22) {
-                            printf("Invalid parameter in _stat (frag).\n");
-                        }
-                    } else {
-                        if (difftime(st.st_mtime, last_modified) > 0.0) {
-                            last_modified = st.st_mtime;
-#ifdef XE_VERBOSE
-                            printf("Reloading shaders.\n");
-#endif
-                            xe_shader_reload();
-                        }
-                    }
-                }
+            int64_t mtime = xe_file_mtime(g_config.vert_shader_path);
+            if (mtime < 0) {
+                XE_LOG_ERR("xe_file_mtime returned %lld", mtime);
             }
-            time(&timer);
+            bool reload = mtime > last_modified;
+            if (!reload) {
+                mtime = xe_file_mtime(g_config.frag_shader_path);
+                if (mtime < 0) {
+                    XE_LOG_ERR("xe_file_mtime returned %lld", mtime);
+                }
+                reload = mtime > last_modified;
+            }
+
+            if (reload) {
+                last_modified = mtime;
+                XE_LOG("Reloading shaders.");
+                xe_shader_reload();
+            }
         }
+        timer = time(NULL);
     }
 }
 
