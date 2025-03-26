@@ -2,7 +2,7 @@
 #ifndef __XE_SCENE_H__
 #define __XE_SCENE_H__
 
-#include "xe.h"
+#include "xe_renderer.h"
 
 typedef struct xe_scene_node {
     float pos_x;

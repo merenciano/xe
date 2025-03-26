@@ -1,5 +1,5 @@
 #include "xe_renderer.h"
-#include "platform.h"
+#include "xe_platform.h"
 
 #include <llulu/lu_time.h>
 #include <glad/glad.h>
@@ -7,6 +7,7 @@
 
 #include <time.h>
 #include <string.h>
+#include <stdint.h>
 
 enum {
     XE_MAX_VERTICES = 1U << 14,
@@ -52,11 +53,11 @@ typedef struct xe_drawcmd {
 } xe_drawcmd;
 
 /* Persistent mapped video buffer */
+enum mapsasdasd{
+    XE_GFX_MAP_FLAGS = GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT,
+    XE_GFX_STORAGE_FLAGS = XE_GFX_MAP_FLAGS | GL_DYNAMIC_STORAGE_BIT
+};
 typedef struct xe_vbuf {
-    enum {
-        XE_GFX_MAP_FLAGS = GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT,
-        XE_GFX_STORAGE_FLAGS = XE_GFX_MAP_FLAGS | GL_DYNAMIC_STORAGE_BIT
-    };
     void *data;
     size_t head;
     GLuint id;
@@ -99,6 +100,13 @@ xe_rend_sync(void)
     } else if (err == GL_CONDITION_SATISFIED) {
         printf("Warning: gpu fence blocked for %lld ns.\n", sync_time_ns);
     }
+}
+
+void
+xe_rend_canvas_resize(int new_w, int new_h)
+{
+    g_config.canvas.w = new_w;
+    g_config.canvas.h = new_h;
 }
 
 void
@@ -303,11 +311,11 @@ static const int g_tex_fmt_lut_type[XE_TEX_FMT_COUNT] = {
 static inline void
 xe_texture_gpu_setup(void)
 {
-    glCreateTextures(GL_TEXTURE_2D_ARRAY, g_r.tex_count, g_r.tex.id);
-    glBindTextures(0, g_r.tex_count, g_r.tex.id);
+    glCreateTextures(GL_TEXTURE_2D_ARRAY, XE_MAX_TEXTURE_ARRAYS, g_r.tex.id);
+    glBindTextures(0, XE_MAX_TEXTURE_ARRAYS, g_r.tex.id);
     for (int i = 0; i < g_r.tex_count; ++i) {
         const xe_rend_texfmt *fmt = &g_r.tex.fmt[i];
-        glTextureStorage3D(g_r.tex.id[i], 1, g_tex_fmt_lut_internal[fmt->format], fmt->width, fmt->height, g_r.tex.count[i]);
+        glTextureStorage3D(g_r.tex.id[i], 1, g_tex_fmt_lut_internal[fmt->format], fmt->width, fmt->height, XE_MAX_TEXTURE_ARRAY_SIZE);
     }
 }
 
@@ -327,11 +335,12 @@ xe_rend_tex_reserve(xe_rend_texfmt fmt)
 
     // If it is the first tex with that format, add a new vector to the pool.
     if (g_r.tex_count >= XE_MAX_TEXTURE_ARRAYS) {
-        printf("Error: xe_texture_reserve failed (full texture pool). Consider increasing XE_MAX_TEXTURE_ARRAYS.\n");
+        XE_LOG_ERR("Error: xe_texture_reserve failed (full texture pool). Consider increasing XE_MAX_TEXTURE_ARRAYS.");
         return (xe_rend_tex){-1, -1};
     }
 
     int index = g_r.tex_count++;
+    glTextureStorage3D(g_r.tex.id[index], 1, g_tex_fmt_lut_internal[fmt.format], fmt.width, fmt.height, XE_MAX_TEXTURE_ARRAY_SIZE);
     g_r.tex.fmt[index] = fmt;
     g_r.tex.count[index] = 1;
     return (xe_rend_tex){index, 0};
@@ -385,7 +394,7 @@ xe_rend_init(xe_rend_config *cfg)
     glDisable(GL_STENCIL_TEST);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glClearColor(g_config.canvas.bg_col[0], g_config.canvas.bg_col[1], g_config.canvas.bg_col[2], 1.0f);
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glViewport(0, 0, g_config.canvas.w, g_config.canvas.h);
 
     /* Persistent mapped buffers for vertices, indices uniforms and indirect draw commands. */
@@ -470,7 +479,7 @@ xe_rend_submit(xe_rend_mesh mesh, xe_rend_draw_id drawidx)
     size_t frame_start = g_r.phase * (XE_DRAW_INDIRECT_MAP_SIZE / 3);
     assert(g_r.drawlist.head - frame_start < XE_DRAW_INDIRECT_MAP_SIZE / 3);
 
-    *((xe_drawcmd*)(g_r.drawlist.data + g_r.drawlist.head)) = (xe_drawcmd){
+    *((xe_drawcmd*)((char*)g_r.drawlist.data + g_r.drawlist.head)) = (xe_drawcmd){
         .element_count = mesh.idx_count,
         .instance_count = 1,
         .first_idx = mesh.first_idx,
@@ -480,34 +489,57 @@ xe_rend_submit(xe_rend_mesh mesh, xe_rend_draw_id drawidx)
     g_r.drawlist.head += sizeof(xe_drawcmd);
 }
 
-void xe_rend_render(xe_rend_canvas *canvas)
+void xe_rend_render(void)
 {
     xe_shader_check_reload(); // TODO: async
 
-    if (memcmp(&g_config.canvas, canvas, sizeof(g_config.canvas))) {
-        g_config.canvas = *canvas;
-        glClearColor(canvas->bg_col[0], canvas->bg_col[1], canvas->bg_col[2], 1.0f);
-        glViewport(0, 0, canvas->w, canvas->h);
+    {
+        static int last_w, last_h;
+        if (last_w != g_config.canvas.w || last_h != g_config.canvas.h) {
+            glViewport(0, 0, g_config.canvas.w, g_config.canvas.h);
+            last_w = g_config.canvas.w;
+            last_h = g_config.canvas.h;
+        }
     }
 
     xe_rend_sync();
-    memcpy(g_r.uniforms.data + g_r.phase * sizeof(xe_shader_data), g_r.view_proj, sizeof(g_r.view_proj));
+    memcpy((char*)g_r.uniforms.data + g_r.phase * sizeof(xe_shader_data), g_r.view_proj, sizeof(g_r.view_proj));
     glBindBufferRange(GL_UNIFORM_BUFFER, 0, g_r.uniforms.id, g_r.phase * sizeof(xe_shader_data), sizeof(xe_shader_data));
 
-    glClear(
-        ((int)g_config.canvas.clear_color * GL_COLOR_BUFFER_BIT) |
-        ((int)g_config.canvas.clear_depth * GL_DEPTH_BUFFER_BIT) |
-        ((int)g_config.canvas.clear_stencil * GL_STENCIL_BUFFER_BIT));
+    glClear(GL_COLOR_BUFFER_BIT);
 
     size_t offset = (g_r.phase * (XE_DRAW_INDIRECT_MAP_SIZE / 3));
     size_t cmdbuf_size = g_r.drawlist.head - offset;
-    assert(cmdbuf_size < (XE_DRAW_INDIRECT_MAP_SIZE / 3) && "The draw command list is larger than a third of the mapped buffer.");
+    xe_assert(cmdbuf_size < (XE_DRAW_INDIRECT_MAP_SIZE / 3) && "The draw command list is larger than a third of the mapped buffer.");
     size_t cmdbuf_count = cmdbuf_size / sizeof(xe_drawcmd);
-    assert(cmdbuf_count < XE_MAX_DRAW_INDIRECT);
+    xe_assert(cmdbuf_count < XE_MAX_DRAW_INDIRECT);
     glMultiDrawElementsIndirect(GL_TRIANGLES, sizeof(xe_rend_idx) == 4 ? GL_UNSIGNED_INT : GL_UNSIGNED_SHORT, (void*)offset, cmdbuf_count, 0);
 
     g_r.fence[g_r.phase] = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
     g_r.phase = (g_r.phase + 1) % 3;
     g_r.uniforms.head = g_r.phase * sizeof(xe_shader_data) + offsetof(xe_shader_data, data);
     g_r.drawlist.head = g_r.phase * (XE_DRAW_INDIRECT_MAP_SIZE / 3);
+}
+
+void
+xe_rend_shutdown(void)
+{
+#ifdef XE_CFG_SLOW_AND_UNNECESSARY_SHUTDOWN
+    glFlush();
+    glDeleteSync(g_r.fence[0]);
+    glDeleteSync(g_r.fence[1]);
+    glDeleteSync(g_r.fence[2]);
+    glUnmapNamedBuffer(g_r.vertices.id);
+    glUnmapNamedBuffer(g_r.indices.id);
+    glUnmapNamedBuffer(g_r.uniforms.id);
+    glUnmapNamedBuffer(g_r.drawlist.id);
+    glDisableVertexAttribArray(g_r.vertices.id);
+    glDeleteBuffers(1, &g_r.vertices.id);
+    glDeleteBuffers(1, &g_r.indices.id);
+    glDeleteBuffers(1, &g_r.uniforms.id);
+    glDeleteBuffers(1, &g_r.drawlist.id);
+    glDeleteTextures(g_r.tex_count, g_r.tex.id);
+    glDeleteProgram(g_r.program_id);
+    glDeleteVertexArrays(1, &g_r.vao_id);
+#endif
 }

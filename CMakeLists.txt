@@ -11,9 +11,8 @@ add_library(xe OBJECT)
 set_target_properties(xe PROPERTIES ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/lib)
 
 target_sources(xe PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/xe.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/scene.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/platform.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/xe_scene.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/xe_platform.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/xe_renderer.c
 )
 
@@ -30,7 +29,6 @@ target_compile_options(xe PRIVATE
 
 add_compile_definitions(
     $<$<CONFIG:Debug>:XE_DEBUG>
-    $<$<CONFIG:Debug>:XE_VERBOSE>
 )
 
 if (WIN32)

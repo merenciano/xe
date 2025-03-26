@@ -1,5 +1,5 @@
-#include "scene.h"
-#include "platform.h"
+#include "xe_scene.h"
+#include "xe_platform.h"
 
 #include <spine/spine.h>
 #include <spine/extension.h>
@@ -114,7 +114,7 @@ void xe_scene_spine_draw(xe_scene_spine *self)
             memcpy(indices, g_clipper->clippedTriangles->items, slot_idx_count * sizeof(*indices));
 		}
 
-        xe_rend_mesh mesh = xe_rend_mesh_add(vertices, slot_vtx_count * sizeof(xe_rend_vtx), indices, slot_idx_count * sizeof(xe_index));
+        xe_rend_mesh mesh = xe_rend_mesh_add(vertices, slot_vtx_count * sizeof(xe_rend_vtx), indices, slot_idx_count * sizeof(xe_rend_idx));
         xe_rend_draw_id di = xe_rend_material_add((xe_rend_material){
             .apx = self->node.pos_x, .apy = self->node.pos_y,
             .asx = self->node.scale_x, .asy = self->node.scale_y,
