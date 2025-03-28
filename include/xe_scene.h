@@ -1,8 +1,34 @@
 
-#define __XE_SCENE_H__
 #ifndef __XE_SCENE_H__
 #define __XE_SCENE_H__
 
+#include "xe_renderer.h"
+
+typedef struct xe_scene_node {
+    float pos_x;
+    float pos_y;
+    float scale_x;
+    float scale_y;
+    float rotation;
+    xe_rend_mesh mesh;
+    xe_rend_tex tex;
+
+#ifdef XE_DEBUG
+    const char *name;
+#endif
+} xe_scene_node;
+
+
+typedef struct xe_scene_spine {
+    xe_scene_node node;
+    struct spSkeleton *skel;
+    struct spAnimationState *anim;
+} xe_scene_spine;
+
+void xe_scene_spine_update(xe_scene_spine *self, float delta_sec);
+void xe_scene_spine_draw(xe_scene_spine *self);
+
+#if 0
 #include <llulu/lu_str.h>
 #include <stdint.h>
 
@@ -63,5 +89,6 @@ extern const xe_shader_desc g_shaders[];
 extern const xe_spine_desc  g_spines[];
 extern const xe_scenenode_desc g_nodes[];
 extern const xe_scene_desc scenes[];
+#endif
 
 #endif /* __XE_SCENE_H__ */

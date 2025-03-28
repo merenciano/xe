@@ -1,4 +1,6 @@
-#include "xe.h"
+#include "xe_platform.h"
+#include "xe_renderer.h"
+#include "xe_scene.h"
 #include "spine/AnimationState.h"
 #include "spine/Skeleton.h"
 
@@ -14,12 +16,7 @@
 #include <assert.h>
 #include <math.h>
 
-#ifdef XE_DEBUG
-#define APP_PATHETIC_SHUTDOWN
-#endif
-#define APP_HALF_ASS_INIT
-
-static const xe_vertex QUAD_VERTICES[] = {
+static const xe_rend_vtx QUAD_VERTICES[] = {
     { .x = -1.0f, .y = -1.0f,
       .u = 0.0f, .v = 0.0f,
       .color = 0xFFFF00FF },
@@ -34,146 +31,60 @@ static const xe_vertex QUAD_VERTICES[] = {
       .color = 0xFF00FF00 }
 };
 
-static const xe_index QUAD_INDICES[] = { 0, 1, 2, 0, 2, 3 };
-
-/* TODO: To app_ctx */
-struct {
-    int64_t frame_count;
-    int64_t glfw_init_ns;
-    int64_t xe_init_ns;
-    int64_t stb_img_load_ns;
-    int64_t frame_time[256];
-    int64_t init_time_ns;
-    int64_t shutdown_time_ns;
-    int64_t total_time_ns;
-} timer_data;
-
-struct {
-    const char *name;
-
-    /* SO window */
-    char window_title[1024];
-    int window_width;
-    int window_height;
-    bool vsync;
-    /* Render surface */
-    xe_canvas canvas;
-    /* SO inputs */
-    float mouse_x;
-    float mouse_y;
-    bool close;
-} app_ctx;
-
-static inline void print_timer_data();
-
-GLFWwindow *g_window;
-
-void on_canvas_resized(GLFWwindow* window, int width, int height)
-{
-    app_ctx.canvas.w = width;
-    app_ctx.canvas.h = height;
-}
-
-void on_window_close(GLFWwindow* window)
-{
-    app_ctx.close = true;
-}
-
-void on_mouse_motion(GLFWwindow* window, double x, double y)
-{
-    app_ctx.mouse_x = (float)x;
-    app_ctx.mouse_y = (float)y;
-}
+static const xe_rend_idx QUAD_INDICES[] = { 0, 1, 2, 0, 2, 3 };
 
 int main(int argc, char **argv)
 {
-    app_ctx.name = "XE TEST";
-    app_ctx.window_width = 2280;
-    app_ctx.window_height = 1860;
-    app_ctx.vsync = false;
-    app_ctx.canvas = (xe_canvas){.clear_color = true, .clear_depth = false, .clear_stencil = false,
-        .bg_col = {0.3f, 0.0f, 0.2f}};
+    xe_platform *plat = xe_platform_create(&(xe_platform_config){
+        .title = "XE TEST",
+        .display_w = 2280,
+        .display_h = 1860,
+        .vsync = false,
+        .log_filename = ""
+    });
 
-    lu_timestamp start_time = lu_time_get();
-    lu_timestamp timer = start_time;
-    if (!glfwInit()) {
-        printf("Could not init glfw. Aborting...\n");
+    if (!plat) {
         return 1;
     }
 
-#ifndef APP_HALF_ASS_INIT
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_FALSE);
-#endif
-
-    g_window = glfwCreateWindow(app_ctx.window_width, app_ctx.window_height, app_ctx.window_title, NULL, NULL);
-    if (!g_window) {
-        glfwTerminate();
-        printf("Could not open glfw window. Aborting...\n");
-        return 1;
-    }
-
-    glfwGetFramebufferSize(g_window, &app_ctx.canvas.w, &app_ctx.canvas.h);
-
-    glfwSetWindowCloseCallback(g_window, on_window_close);
-    glfwSetFramebufferSizeCallback(g_window, on_canvas_resized);
-    glfwSetCursorPosCallback(g_window, on_mouse_motion);
-    glfwMakeContextCurrent(g_window);
-    glfwSwapInterval((int)app_ctx.vsync);
-
-    xe_config cfg = {
-        .gl_loader = (void *(*)(const char *))glfwGetProcAddress,
-        .canvas = app_ctx.canvas,
-        .seconds_between_shader_file_changed_checks = 1.0f,
-        .vert_shader_path = "./assets/vert.glsl",
-        .frag_shader_path = "./assets/frag.glsl",
-    };
-
-    int64_t elapsed = lu_time_elapsed(timer);
-    timer_data.glfw_init_ns = elapsed;
-    timer = lu_time_get();
-
+    lu_timestamp timer = lu_time_get();
     /* TODO: Asset map with user-defined paths */
-    xe_image owl_atlas = xe_load_image("./assets/owl.png");
-    xe_image windmill_atlas = xe_load_image("./assets/windmill.png");
-    xe_image tex_test0 = xe_load_image("./assets/tex_test_0.png");
-    xe_image tex_test1 = xe_load_image("./assets/tex_test_1.png");
-    xe_image tex_test2 = xe_load_image("./assets/tex_test_2.png");
-    xe_image tex_test3 = xe_load_image("./assets/tex_test_3.png");
+    xe_rend_img owl_atlas = xe_rend_img_load("./assets/owl.png");
+    xe_rend_img windmill_atlas = xe_rend_img_load("./assets/windmill.png");
+    xe_rend_img tex_test0 = xe_rend_img_load("./assets/tex_test_0.png");
+    xe_rend_img tex_test1 = xe_rend_img_load("./assets/tex_test_1.png");
+    xe_rend_img tex_test2 = xe_rend_img_load("./assets/tex_test_2.png");
+    xe_rend_img tex_test3 = xe_rend_img_load("./assets/tex_test_3.png");
 
-    elapsed = lu_time_elapsed(timer);
-    timer_data.stb_img_load_ns = elapsed;
-    timer = lu_time_get();
-    
-    xe_init(&cfg);
-
-    xe_texture_set(owl_atlas.tex, owl_atlas.data);
+    xe_rend_tex_set(owl_atlas.tex, owl_atlas.data);
     stbi_image_free(owl_atlas.data);
     owl_atlas.data = NULL;
 
-    xe_texture_set(windmill_atlas.tex, windmill_atlas.data);
+    xe_rend_tex_set(windmill_atlas.tex, windmill_atlas.data);
     stbi_image_free(windmill_atlas.data);
     windmill_atlas.data = NULL;
 
-    xe_texture_set(tex_test0.tex, tex_test0.data);
+    xe_rend_tex_set(tex_test0.tex, tex_test0.data);
     stbi_image_free(tex_test0.data);
     tex_test0.data = NULL;
 
-    xe_texture_set(tex_test1.tex, tex_test1.data);
+    xe_rend_tex_set(tex_test1.tex, tex_test1.data);
     stbi_image_free(tex_test1.data);
     tex_test1.data = NULL;
 
-    xe_texture_set(tex_test2.tex, tex_test2.data);
+    xe_rend_tex_set(tex_test2.tex, tex_test2.data);
     stbi_image_free(tex_test2.data);
     tex_test2.data = NULL;
 
-    xe_texture_set(tex_test3.tex, tex_test3.data);
+    xe_rend_tex_set(tex_test3.tex, tex_test3.data);
     stbi_image_free(tex_test3.data);
     tex_test3.data = NULL;
 
-    xe_node nodes[] = {
+    int64_t elapsed = lu_time_elapsed(timer);
+    plat->timers_data.img_load = elapsed;
+    timer = lu_time_get();
+
+    xe_scene_node nodes[] = {
         {
             .pos_x = -10.5f,
             .pos_y = -10.0f,
@@ -220,9 +131,6 @@ int main(int argc, char **argv)
         },
     };
 
-    elapsed = lu_time_elapsed(timer);
-    timer_data.xe_init_ns = elapsed;
-
     spBone_setYDown(-1);
     spAtlas *sp_atlas = spAtlas_createFromFile("./assets/owl.atlas", &owl_atlas);
     spSkeletonJson *skel_json = spSkeletonJson_create(sp_atlas);
@@ -232,7 +140,7 @@ int main(int argc, char **argv)
         return 1;
     }
     spAnimationStateData *anim_data = spAnimationStateData_create(skel_data);
-    xe_spine spine_node = {.skel = spSkeleton_create(skel_data), .anim = spAnimationState_create(anim_data)};
+    xe_scene_spine spine_node = {.skel = spSkeleton_create(skel_data), .anim = spAnimationState_create(anim_data)};
     spSkeleton_setToSetupPose(spine_node.skel);
 
     spine_node.node.tex = owl_atlas.tex;
@@ -269,7 +177,7 @@ int main(int argc, char **argv)
         return 1;
     }
     spAnimationStateData *windmill_anim_data = spAnimationStateData_create(windmill_skel_data);
-    xe_spine windmill_spine = {.skel = spSkeleton_create(windmill_skel_data), .anim = spAnimationState_create(windmill_anim_data)};
+    xe_scene_spine windmill_spine = {.skel = spSkeleton_create(windmill_skel_data), .anim = spAnimationState_create(windmill_anim_data)};
     spSkeleton_setToSetupPose(windmill_spine.skel);
     windmill_spine.node.tex = windmill_atlas.tex;
     spSkeleton_updateWorldTransform(windmill_spine.skel, SP_PHYSICS_UPDATE);
@@ -280,35 +188,36 @@ int main(int argc, char **argv)
     windmill_spine.node.rotation = 0.0f;
     spAnimationState_setAnimationByName(windmill_spine.anim, 0, "animation", true);
 
-    timer_data.init_time_ns = lu_time_elapsed(start_time);
-    timer = lu_time_get();
+    elapsed = lu_time_elapsed(timer);
+    plat->timers_data.scene_load = elapsed;
 
-    while(!app_ctx.close) {
-        glfwGetWindowSize(g_window, &app_ctx.window_width, &app_ctx.window_height);
-        float x = app_ctx.mouse_x / app_ctx.window_width;
-        float y = app_ctx.mouse_y / app_ctx.window_height;
+    plat->timers_data.init_time = lu_time_elapsed(plat->begin_timestamp);
+    float deltasec = xe_platform_update();
+
+    while(!plat->close) {
+        float x = plat->mouse_x / plat->config.display_w;
+        float y = plat->mouse_y / plat->config.display_h;
         left->alpha = (lu_maxf(x, 0.5f) - 0.5f) * 1.0f;
         right->alpha = (0.5f - lu_minf(x, 0.5f)) * 1.0f;
         down->alpha = (lu_maxf(y, 0.5f) - 0.5f) * 1.0f;
         up->alpha = (0.5f - lu_minf(y, 0.5f)) * 1.0f;
 
         spSkeleton_setToSetupPose(spine_node.skel);
-        xe_spine_update(&spine_node, lu_time_sec(elapsed));  /* Delta time in seconds to APP_CTX */
-        xe_spine_update(&windmill_spine, lu_time_sec(elapsed));
+        xe_scene_spine_update(&spine_node, deltasec);
+        xe_scene_spine_update(&windmill_spine, deltasec);
 
-        float curr_time_sec = lu_time_sec(lu_time_elapsed(start_time));
+        float curr_time_sec = lu_time_sec(lu_time_elapsed(plat->begin_timestamp));
         const float sin_time = sinf(curr_time_sec);
         nodes[0].scale_x = 100.0f + sin_time * 50.0f;
         nodes[0].scale_y = 100.0f + cosf(curr_time_sec) * 50.0f;
         nodes[2].rotation = curr_time_sec;
 
-        xe_gfx_sync();
-
-        xe_spine_draw(&windmill_spine);
-        xe_mesh mesh = xe_gfx_add_mesh(QUAD_VERTICES, sizeof(QUAD_VERTICES),
+        xe_rend_sync();
+        xe_scene_spine_draw(&windmill_spine);
+        xe_rend_mesh mesh = xe_rend_mesh_add(QUAD_VERTICES, sizeof(QUAD_VERTICES),
                                            QUAD_INDICES,  sizeof(QUAD_INDICES));
         for (int i = 0; i < 4; ++i) {
-            xe_draw_idx draw_index = xe_gfx_add_material((xe_material){
+            xe_rend_draw_id draw_index = xe_rend_material_add((xe_rend_material){
                 .apx = nodes[i].pos_x,
                 .apy = nodes[i].pos_y,
                 .asx = nodes[i].scale_x,
@@ -316,53 +225,15 @@ int main(int argc, char **argv)
                 .arot = nodes[i].rotation,
                 .tex = nodes[i].tex
             });
-            xe_gfx_submit(mesh, draw_index);
+            xe_rend_submit(mesh, draw_index);
         }
 
-        xe_spine_draw(&spine_node);
-        xe_render(&app_ctx.canvas);
-        glfwSwapBuffers(g_window);
+        xe_scene_spine_draw(&spine_node);
 
-        elapsed = lu_time_elapsed(timer);
-        timer = lu_time_get();
-
-        timer_data.frame_time[timer_data.frame_count % 256] = elapsed;
-        timer_data.frame_count++;
-
-        sprintf(app_ctx.window_title, "%s  |  %f fps", app_ctx.name, 1.0f / lu_time_sec(elapsed));
-        glfwSetWindowTitle(g_window, app_ctx.window_title);
-        glfwPollEvents();
+        deltasec = xe_platform_update();
     }
 
-    timer = lu_time_get();
+    xe_platform_shutdown();
 
-#ifdef APP_PATHETIC_SHUTDOWN
-    glfwDestroyWindow(g_window);
-    glfwTerminate();
-#endif /* APP_PATHETIC_SHUTDOWN */
-
-    timer_data.shutdown_time_ns = lu_time_elapsed(timer);
-    timer_data.total_time_ns = lu_time_elapsed(start_time);
-
-#ifdef XE_VERBOSE
-    print_timer_data();
-#endif
     return 0;
-}
-
-static inline void print_timer_data()
-{
-    printf(" * Report (%lld frames, %.2f seconds) * \n", timer_data.frame_count, lu_time_sec(timer_data.total_time_ns));
-    printf("Init time: %lld ms\n", lu_time_ms(timer_data.init_time_ns));
-    printf(" - glfw:\t%lld ms\n", lu_time_ms(timer_data.glfw_init_ns));
-    printf(" - stb_img:\t%lld ms\n", lu_time_ms(timer_data.stb_img_load_ns));
-    printf(" - xe:\t%lld ms\n", lu_time_ms(timer_data.xe_init_ns));
-    int64_t sum = 0;
-    for (int i = 0; i < 256; ++i) {
-        sum += timer_data.frame_time[i];
-    }
-    sum /= 256;
-    double sum_d = sum;
-    printf("Last 256 frame times average: %.2f ms\n", sum / 1000000.0f);
-    printf("Shutdown: %lld ms\n", lu_time_ms(timer_data.shutdown_time_ns));
 }

@@ -22,7 +22,7 @@ in Vertex {
     flat int shape_idx;
 } v_in;
 
-out vec4 frag_color;
+out vec4 frag_color; 
 
 void main() {
     frag_color = texture(u_textures[shape[v_in.shape_idx].tex_idx], vec3(v_in.uv, shape[v_in.shape_idx].tex_layer));
