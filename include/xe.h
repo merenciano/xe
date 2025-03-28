@@ -3,7 +3,7 @@
 
 /*
     TODO:
-     -> Utils: Log, Alloc, Assert, Future, Async jobs, Hash map, Pool (sparse)
+     -> Utils: Alloc, Future, Async jobs, Hash map, Pool (sparse)
      -> Profiling/Debug: Tracing 
      -> Fill the scene with more assets
      -> UBO to SSAO

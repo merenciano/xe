@@ -94,9 +94,9 @@ xe_rend_sync(void)
     GLenum err = glClientWaitSync(g_r.fence[g_r.phase], GL_SYNC_FLUSH_COMMANDS_BIT, XE_MAX_SYNC_TIMEOUT_NANOSEC);
     int64_t sync_time_ns = lu_time_elapsed(start);
     if (err == GL_TIMEOUT_EXPIRED) {
-        printf("Error: something is wrong with the gpu fences: sync blocked for more than 5ms.\n");
+        XE_LOG_ERR("Something is wrong with the gpu fences: sync blocked for more than %d ms.", (int)(XE_MAX_SYNC_TIMEOUT_NANOSEC / 1000000));
     } else if (err == GL_CONDITION_SATISFIED) {
-        printf("Warning: gpu fence blocked for %lld ns.\n", sync_time_ns);
+        XE_LOG_WARN("GPU fence blocked for %lld ns.", sync_time_ns);
     }
 }
 
@@ -231,8 +231,8 @@ xe_shader_check_reload(void)
                 XE_LOG("Reloading shaders.");
                 xe_rend_shader_reload();
             }
+            timer = time(NULL);
         }
-        timer = time(NULL);
     }
 }
 
