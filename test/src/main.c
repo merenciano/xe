@@ -35,16 +35,6 @@ static const xe_rend_idx QUAD_INDICES[] = { 0, 1, 2, 0, 2, 3 };
 
 int main(int argc, char **argv)
 {
-
-    lu_timestamp timer = lu_time_get();
-    /* TODO: Asset map with user-defined paths */
-    xe_rend_img owl_atlas = xe_rend_img_load("./assets/owl.png");
-    xe_rend_img windmill_atlas = xe_rend_img_load("./assets/windmill.png");
-    xe_rend_img tex_test0 = xe_rend_img_load("./assets/tex_test_0.png");
-    xe_rend_img tex_test1 = xe_rend_img_load("./assets/tex_test_1.png");
-    xe_rend_img tex_test2 = xe_rend_img_load("./assets/tex_test_2.png");
-    xe_rend_img tex_test3 = xe_rend_img_load("./assets/tex_test_3.png");
-
     xe_platform *plat = xe_platform_create(&(xe_platform_config){
         .title = "XE TEST",
         .display_w = 2280,
@@ -56,6 +46,15 @@ int main(int argc, char **argv)
     if (!plat) {
         return 1;
     }
+
+    lu_timestamp timer = lu_time_get();
+    /* TODO: Asset map with user-defined paths */
+    xe_rend_img owl_atlas = xe_rend_img_load("./assets/owl.png");
+    xe_rend_img windmill_atlas = xe_rend_img_load("./assets/windmill.png");
+    xe_rend_img tex_test0 = xe_rend_img_load("./assets/tex_test_0.png");
+    xe_rend_img tex_test1 = xe_rend_img_load("./assets/tex_test_1.png");
+    xe_rend_img tex_test2 = xe_rend_img_load("./assets/tex_test_2.png");
+    xe_rend_img tex_test3 = xe_rend_img_load("./assets/tex_test_3.png");
 
     xe_rend_tex_set(owl_atlas.tex, owl_atlas.data);
     stbi_image_free(owl_atlas.data);

@@ -1,4 +1,5 @@
 #include "xe_platform.h"
+#include "xe_renderer.h"
 #include "llulu/lu_time.h"
 
 #include <glad/glad.h>
@@ -52,8 +53,8 @@ xe_platform_create(xe_platform_config *config)
     g_plat.config = *config;
     g_plat.log_stream = fopen(g_plat.config.log_filename, "w");
     if (!g_plat.log_stream) {
-        XE_LOG("fopen file %s failed, using stdout instead.", g_plat.config.log_filename);
         g_plat.log_stream = stdout;
+        XE_LOG("fopen file %s failed, using stdout instead.", g_plat.config.log_filename);
     }
 
     xe_assert(g_plat.log_stream);

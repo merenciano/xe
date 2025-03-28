@@ -38,11 +38,11 @@ typedef struct xe_shader_data {
     xe_shader_shape_data data[XE_MAX_UNIFORMS];
 } xe_shader_data;
 
-typedef struct xe_texarr_pool {
-    uint32_t id[XE_MAX_TEXTURE_ARRAYS];
+struct xe_texpool {
     xe_rend_texfmt fmt[XE_MAX_TEXTURE_ARRAYS];
-    int count[XE_MAX_TEXTURE_ARRAYS];
-} xe_texarr_pool;
+    int16_t layer_count[XE_MAX_TEXTURE_ARRAYS];
+    uint32_t id[XE_MAX_TEXTURE_ARRAYS];
+};
 
 typedef struct xe_drawcmd {
     uint32_t element_count;
@@ -53,20 +53,18 @@ typedef struct xe_drawcmd {
 } xe_drawcmd;
 
 /* Persistent mapped video buffer */
-enum mapsasdasd{
-    XE_GFX_MAP_FLAGS = GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT,
-    XE_GFX_STORAGE_FLAGS = XE_GFX_MAP_FLAGS | GL_DYNAMIC_STORAGE_BIT
+enum {
+    XE_VBUF_MAP_FLAGS = GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT,
+    XE_VBUF_STORAGE_FLAGS = XE_VBUF_MAP_FLAGS | GL_DYNAMIC_STORAGE_BIT
 };
 typedef struct xe_vbuf {
     void *data;
     size_t head;
-    GLuint id;
+    uint32_t id;
 } xe_vbuf;
 
 typedef struct xe_gl_renderer {
-    xe_texarr_pool tex;
-    int tex_count;
-
+    struct xe_texpool tex;
     int phase; /* for the triphassic fence */
     GLsync fence[3];
     float view_proj[16]; // TODO: move to scene
@@ -202,7 +200,6 @@ xe_rend_shader_reload(void)
     glDeleteShader(frag_id);
 }
 
-
 static void
 xe_shader_check_reload(void)
 {
@@ -210,7 +207,7 @@ xe_shader_check_reload(void)
         static int64_t timer;
         static int64_t last_modified;
         if (!timer) {
-            assert(!last_modified);
+            xe_assert(!last_modified);
             timer = time(NULL);
             last_modified = timer;
         }
@@ -313,10 +310,6 @@ xe_texture_gpu_setup(void)
 {
     glCreateTextures(GL_TEXTURE_2D_ARRAY, XE_MAX_TEXTURE_ARRAYS, g_r.tex.id);
     glBindTextures(0, XE_MAX_TEXTURE_ARRAYS, g_r.tex.id);
-    for (int i = 0; i < g_r.tex_count; ++i) {
-        const xe_rend_texfmt *fmt = &g_r.tex.fmt[i];
-        glTextureStorage3D(g_r.tex.id[i], 1, g_tex_fmt_lut_internal[fmt->format], fmt->width, fmt->height, XE_MAX_TEXTURE_ARRAY_SIZE);
-    }
 }
 
 xe_rend_tex
@@ -326,32 +319,41 @@ xe_rend_tex_reserve(xe_rend_texfmt fmt)
     assert(fmt.format >= 0 && fmt.format < XE_TEX_FMT_COUNT && "Invalid pixel format.");
 
     // Look for an array of textures of the same format and push the new tex.
-    for (int i = 0; i < g_r.tex_count; ++i) {
-        if (!memcmp(&g_r.tex.fmt[i], &fmt, sizeof(fmt))) {
-            int layer = g_r.tex.count[i]++;
+    for (int i = 0; i < XE_MAX_TEXTURE_ARRAYS; ++i) {
+        if (!memcmp(&g_r.tex.fmt[i], &fmt, sizeof(fmt)) && g_r.tex.layer_count[i] < XE_MAX_TEXTURE_ARRAY_SIZE) {
+            int layer = g_r.tex.layer_count[i]++;
             return (xe_rend_tex){i, layer};
         }
     }
 
-    // If it is the first tex with that format, add a new vector to the pool.
-    if (g_r.tex_count >= XE_MAX_TEXTURE_ARRAYS) {
-        XE_LOG_ERR("Error: xe_texture_reserve failed (full texture pool). Consider increasing XE_MAX_TEXTURE_ARRAYS.");
-        return (xe_rend_tex){-1, -1};
+    // Initialize a new array for the texture
+    for (int i = 0; i < XE_MAX_TEXTURE_ARRAYS; ++i) {
+        if (!g_r.tex.layer_count[i]) {
+            g_r.tex.fmt[i] = fmt;
+            g_r.tex.layer_count[i] = 1;
+            return (xe_rend_tex){i, 0};
+        }
     }
 
-    int index = g_r.tex_count++;
-    glTextureStorage3D(g_r.tex.id[index], 1, g_tex_fmt_lut_internal[fmt.format], fmt.width, fmt.height, XE_MAX_TEXTURE_ARRAY_SIZE);
-    g_r.tex.fmt[index] = fmt;
-    g_r.tex.count[index] = 1;
-    return (xe_rend_tex){index, 0};
+    XE_LOG_ERR("Error: xe_texture_reserve failed (full texture pool). Consider increasing XE_MAX_TEXTURE_ARRAYS.");
+    return (xe_rend_tex){-1, -1};
 }
 
 void
 xe_rend_tex_set(xe_rend_tex tex, void *data)
 {
-    assert(data);
+    xe_assert(tex.idx < XE_MAX_TEXTURE_ARRAYS && tex.layer < XE_MAX_TEXTURE_ARRAY_SIZE);
     const xe_rend_texfmt *fmt = &g_r.tex.fmt[tex.idx];
-    glTextureSubImage3D(g_r.tex.id[tex.idx], 0, 0, 0, (int)tex.layer, fmt->width, fmt->height, 1, g_tex_fmt_lut_format[fmt->format], g_tex_fmt_lut_type[fmt->format], data);
+    xe_assert(fmt->width && fmt->height);
+    GLint init;
+    glGetTextureParameteriv(g_r.tex.id[tex.idx], GL_TEXTURE_IMMUTABLE_FORMAT, &init);
+    if (init == GL_FALSE) {
+        glTextureStorage3D(g_r.tex.id[tex.idx], 1, g_tex_fmt_lut_internal[fmt->format], fmt->width, fmt->height, XE_MAX_TEXTURE_ARRAY_SIZE);
+    }
+    /* NULL data can be used to initialize the storage for writable textures */
+    if (data) {
+        glTextureSubImage3D(g_r.tex.id[tex.idx], 0, 0, 0, (int)tex.layer, fmt->width, fmt->height, 1, g_tex_fmt_lut_format[fmt->format], g_tex_fmt_lut_type[fmt->format], data);
+    }
 }
 
 xe_rend_img
@@ -401,18 +403,18 @@ xe_rend_init(xe_rend_config *cfg)
     GLuint buf_id[4];
     glCreateBuffers(4, buf_id);
     g_r.vertices.id = buf_id[0];
-    glNamedBufferStorage(g_r.vertices.id, XE_VERTICES_MAP_SIZE, NULL, XE_GFX_STORAGE_FLAGS);
-    g_r.vertices.data = glMapNamedBufferRange(g_r.vertices.id, 0, XE_VERTICES_MAP_SIZE, XE_GFX_MAP_FLAGS);
+    glNamedBufferStorage(g_r.vertices.id, XE_VERTICES_MAP_SIZE, NULL, XE_VBUF_STORAGE_FLAGS);
+    g_r.vertices.data = glMapNamedBufferRange(g_r.vertices.id, 0, XE_VERTICES_MAP_SIZE, XE_VBUF_MAP_FLAGS);
     g_r.indices.id = buf_id[1];
-    glNamedBufferStorage(g_r.indices.id, XE_INDICES_MAP_SIZE, NULL, XE_GFX_STORAGE_FLAGS);
-    g_r.indices.data = glMapNamedBufferRange(g_r.indices.id, 0, XE_INDICES_MAP_SIZE, XE_GFX_MAP_FLAGS);
+    glNamedBufferStorage(g_r.indices.id, XE_INDICES_MAP_SIZE, NULL, XE_VBUF_STORAGE_FLAGS);
+    g_r.indices.data = glMapNamedBufferRange(g_r.indices.id, 0, XE_INDICES_MAP_SIZE, XE_VBUF_MAP_FLAGS);
     g_r.uniforms.id = buf_id[2];
-    glNamedBufferStorage(g_r.uniforms.id, XE_UNIFORMS_MAP_SIZE, NULL, XE_GFX_STORAGE_FLAGS);
-    g_r.uniforms.data = glMapNamedBufferRange(g_r.uniforms.id, 0, XE_UNIFORMS_MAP_SIZE, XE_GFX_MAP_FLAGS);
+    glNamedBufferStorage(g_r.uniforms.id, XE_UNIFORMS_MAP_SIZE, NULL, XE_VBUF_STORAGE_FLAGS);
+    g_r.uniforms.data = glMapNamedBufferRange(g_r.uniforms.id, 0, XE_UNIFORMS_MAP_SIZE, XE_VBUF_MAP_FLAGS);
     g_r.drawlist.id = buf_id[3];
     glBindBuffer(GL_DRAW_INDIRECT_BUFFER, g_r.drawlist.id);
-    glNamedBufferStorage(g_r.drawlist.id, XE_DRAW_INDIRECT_MAP_SIZE, NULL, XE_GFX_STORAGE_FLAGS);
-    g_r.drawlist.data = glMapNamedBufferRange(g_r.drawlist.id, 0, XE_DRAW_INDIRECT_MAP_SIZE, XE_GFX_MAP_FLAGS);
+    glNamedBufferStorage(g_r.drawlist.id, XE_DRAW_INDIRECT_MAP_SIZE, NULL, XE_VBUF_STORAGE_FLAGS);
+    g_r.drawlist.data = glMapNamedBufferRange(g_r.drawlist.id, 0, XE_DRAW_INDIRECT_MAP_SIZE, XE_VBUF_MAP_FLAGS);
 
     xe_shader_gpu_setup();
     xe_mesh_gpu_setup();

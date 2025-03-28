@@ -1,7 +1,6 @@
 #ifndef __XE_PLATFORM_H__
 #define __XE_PLATFORM_H__
 
-#include "xe_renderer.h"
 #include <llulu/lu_time.h>
 
 #include <stdint.h>
@@ -43,17 +42,17 @@ enum {
 };
 
 #if defined(XE_CFG_LOG_DISABLED)
-#define _XE_LOG(LL, ...) (void)
+#define _XE_LOG(LL, ...) (void)0
 #elif defined(XE_CFG_LOG_RESTRICTED)
-#define XE_LOG_DEBUG(...) (void)
-#define XE_LOG_VERBOSE(...) (void)
-#define XE_LOG(...) (void)
-#define XE_LOG_WARN(...) (void)
+#define XE_LOG_DEBUG(...) (void)0
+#define XE_LOG_VERBOSE(...) (void)0
+#define XE_LOG(...) (void)0
+#define XE_LOG_WARN(...) (void)0
 #elif defined(XE_CFG_LOG_VERBOSE)
-#define XE_LOG_DEBUG(...) (void)
+#define XE_LOG_DEBUG(...) (void)0
 #elif !defined(XE_DEBUG)
-#define XE_LOG_DEBUG(...) (void)
-#define XE_LOG_VERBOSE(...) (void)
+#define XE_LOG_DEBUG(...) (void)0
+#define XE_LOG_VERBOSE(...) (void)0
 #endif
 
 #ifndef _XE_LOG
