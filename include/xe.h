@@ -8,7 +8,6 @@
      -> Fill the scene with more assets
      -> UBO to SSAO
      -> Node hierarchy (transform matrix)
-     -> Spine dark color (color + darkcolor in shader data?)
      -> Blend modes (and depth, stencil, scissor, clip, viewport, clear, cull face)
      -> Text rendering
      -> Nuklear or cimgui integration
@@ -30,10 +29,23 @@
  * 
  * XE_CFG_LOG_DISABLED: Disable log printing.
  * XE_CFG_LOG_RESTRICTED: Only print error logs.
- * XE_CFG_LOG_VERBOSE: Print logs from verbose level of importance.
- *
  *
  * XE_CFG_ASSERT(COND): assert function. If not defined <assert.h> will be used.
  */
- 
+
+/* Image API */
+enum {
+    XE_MAX_IMAGES = 32,
+};
+
+enum {
+    XE_IMG_PREMUL_ALPHA = 0x0001,
+};
+
+typedef unsigned int xe_handle;
+typedef struct {xe_handle id;} xe_image;
+xe_image xe_image_load(const char *path, int tex_flags); // XE_IMG_ ... 
+
+//  TODO: SpirV Shaders
+
 #endif /* __XE_H__ */

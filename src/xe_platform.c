@@ -26,10 +26,10 @@ xep_log_report()
 {
     XE_LOG(" * Report (%lld frames, %.2f seconds) * ", g_plat.frame_cnt, lu_time_sec(g_plat.timers_data.total));
     XE_LOG("Init time: %lld ms", lu_time_ms(g_plat.timers_data.init_time));
-    XE_LOG(" - glfw:\t\t%lld ms", lu_time_ms(g_plat.timers_data.glfw_init));
+    XE_LOG(" - glfw:\t%lld ms", lu_time_ms(g_plat.timers_data.glfw_init));
     XE_LOG(" - img load:\t%lld ms", lu_time_ms(g_plat.timers_data.img_load));
     XE_LOG(" - renderer:\t%lld ms", lu_time_ms(g_plat.timers_data.renderer_init));
-    XE_LOG(" - scene:\t\t%lld ms", lu_time_ms(g_plat.timers_data.scene_load));
+    XE_LOG(" - scene:\t%lld ms", lu_time_ms(g_plat.timers_data.scene_load));
     int64_t sum = 0;
     for (int i = 0; i < 256; ++i) {
         sum += g_plat.timers_data.frame_time[i];
@@ -54,7 +54,7 @@ xe_platform_create(xe_platform_config *config)
     g_plat.log_stream = fopen(g_plat.config.log_filename, "w");
     if (!g_plat.log_stream) {
         g_plat.log_stream = stdout;
-        XE_LOG("fopen file %s failed, using stdout instead.", g_plat.config.log_filename);
+        XE_LOG_VERBOSE("fopen file %s failed, using stdout instead.", g_plat.config.log_filename);
     }
 
     xe_assert(g_plat.log_stream);
@@ -94,7 +94,6 @@ xe_platform_create(xe_platform_config *config)
     xe_rend_init(&(xe_rend_config){
         .gl_loader = (void *(*)(const char *))glfwGetProcAddress,
         .canvas = {.w = canv_w, .h = canv_h},
-        .seconds_between_shader_file_changed_checks = 2.0f,
         .vert_shader_path = "./assets/vert.glsl",
         .frag_shader_path = "./assets/frag.glsl"
     });
@@ -123,7 +122,6 @@ xe_platform_update(void)
     glfwGetWindowSize(win, &g_plat.config.display_w, &g_plat.config.display_w);
     int canvas_w, canvas_h;
     glfwGetFramebufferSize(win, &canvas_w, &canvas_h);
-    xe_rend_canvas_resize(canvas_w, canvas_h);
     double x, y;
     glfwGetCursorPos(win, &x, &y);
     g_plat.mouse_x = x;

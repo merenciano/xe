@@ -11,11 +11,7 @@
 #define XE_CFG_ASSERT(COND) assert((COND))
 #endif
 
-static inline void
-xe_assert(bool condition)
-{
-    XE_CFG_ASSERT(condition);
-}
+#define xe_assert XE_CFG_ASSERT
 
 enum {
     XE_OK = 0,
@@ -44,14 +40,10 @@ enum {
 #if defined(XE_CFG_LOG_DISABLED)
 #define _XE_LOG(LL, ...) (void)0
 #elif defined(XE_CFG_LOG_RESTRICTED)
-#define XE_LOG_DEBUG(...) (void)0
 #define XE_LOG_VERBOSE(...) (void)0
 #define XE_LOG(...) (void)0
 #define XE_LOG_WARN(...) (void)0
-#elif defined(XE_CFG_LOG_VERBOSE)
-#define XE_LOG_DEBUG(...) (void)0
 #elif !defined(XE_DEBUG)
-#define XE_LOG_DEBUG(...) (void)0
 #define XE_LOG_VERBOSE(...) (void)0
 #endif
 
