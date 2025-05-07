@@ -2,8 +2,6 @@
 #include "xe_platform.h"
 #include "xe_renderer.h"
 #include "xe_scene.h"
-#include "spine/AnimationState.h"
-#include "spine/Skeleton.h"
 
 #include "xe_spine.h"
 
@@ -16,24 +14,6 @@
 
 #include <stdbool.h>
 #include <assert.h>
-#include <math.h>
-
-static const xe_rend_vtx QUAD_VERTICES[] = {
-    { .x = -1.0f, .y = -1.0f,
-      .u = 0.0f, .v = 0.0f,
-      .color = 0xFFFF00FF },
-    { .x = -1.0f, .y = 1.0f,
-      .u = 0.0f, .v = 1.0f,
-      .color = 0xFF00FFFF },
-    { .x = 1.0f, .y = 1.0f,
-      .u = 1.0f, .v = 1.0f,
-      .color = 0xFFFFFF00 },
-    { .x = 1.0f, .y = -1.0f,
-      .u = 1.0f, .v = 0.0f,
-      .color = 0xFF00FF00 }
-};
-
-static const xe_rend_idx QUAD_INDICES[] = { 0, 1, 2, 0, 2, 3 };
 
 int main(int argc, char **argv)
 {
@@ -51,33 +31,35 @@ int main(int argc, char **argv)
 
     lu_timestamp timer = lu_time_get();
     /* TODO: Asset map with user-defined paths */
-    xe_image windmill_atlas = xe_image_load("./assets/windmill-pma.png", XE_IMG_PREMUL_ALPHA);
-    xe_image owl_atlas = xe_image_load("./assets/owl-pma.png", XE_IMG_PREMUL_ALPHA);
-    xe_image coin_atlas = xe_image_load("./assets/coin-pma.png", XE_IMG_PREMUL_ALPHA);
-    xe_image tex_test0 = xe_image_load("./assets/tex_test_0.png", 0);
-    xe_image tex_test1 = xe_image_load("./assets/tex_test_1.png", 0);
-    xe_image tex_test2 = xe_image_load("./assets/tex_test_2.png", 0);
-    xe_image tex_test3 = xe_image_load("./assets/tex_test_3.png", 0);
-
-    xe_spine owl = xe_spine_load("./assets/owl-pma.atlas", "./assets/owl.json", 0.01f, "idle");
-    xe_spine windmill = xe_spine_load("./assets/windmill-pma.atlas", "./assets/windmill.json", 0.03f, "animation");
-    xe_spine coin = xe_spine_load("./assets/coin-pma.atlas", "./assets/coin-pro.json", 0.05f, "idle");
+    //xe_image windmill_atlas = xe_image_load("./assets/windmill-pma.png", XE_IMG_PREMUL_ALPHA);
+    //xe_image owl_atlas = xe_image_load("./assets/owl-pma.png", XE_IMG_PREMUL_ALPHA);
+    //xe_image coin_atlas = xe_image_load("./assets/coin-pma.png", XE_IMG_PREMUL_ALPHA);
+    xe_image tex_test[] = {
+        xe_image_load("./assets/tex_test_0.png", 0),
+        xe_image_load("./assets/tex_test_1.png", 0),
+        xe_image_load("./assets/tex_test_2.png", 0),
+        xe_image_load("./assets/tex_test_3.png", 0)
+    };
+ 
+    xe_scene_node owl = xe_spine_create("./assets/owl-pma.atlas", "./assets/owl.json", 0.01f, "idle");
+    xe_scene_node windmill = xe_spine_create("./assets/windmill-pma.atlas", "./assets/windmill.json", 0.03f, "animation");
+    xe_scene_node coin = xe_spine_create("./assets/coin-pma.atlas", "./assets/coin-pro.json", 0.05f, "animation");
     
 
     int64_t elapsed = lu_time_elapsed(timer);
     plat->timers_data.img_load = elapsed;
     timer = lu_time_get();
 
-    xe_scene_node nodes[] = {
-        { .image = tex_test0 },
-        { .image = tex_test1 },
-        { .image = tex_test2 },
-        { .image = tex_test3 },
-    };
+    xe_scene_node nodes[4];
 
     for (int i = 0; i < sizeof(nodes) / sizeof(*nodes); ++i) {
-        xe_scene_node *n = nodes + i;
-        xe_scene_tr_init(n, 1.0f * i, 2.0f * i, -30.0f, 1.0f);
+        xe_scene_node_desc desc = {
+            .pos_x = 6.0f * i,
+            .pos_y = 6.0f * i,
+            .pos_z = -30.0f,
+            .scale = 5.0f
+        };
+        nodes[i] = xe_scene_create_drawable(&desc, tex_test[i], (xe_rend_mesh){});
     }
 
     /*spAtlas *sp_atlas = spAtlas_createFromFile("./assets/owl-pma.atlas", &owl_atlas);
@@ -99,12 +81,13 @@ int main(int argc, char **argv)
     xe_scene_tr_init(&spine_node.node, 1.0f, 0.0f, -20.0f, 1.0f);
     spAnimationState_setAnimationByName(spine_node.anim, 0, "idle", true);
     */
-    spAnimationState_setAnimationByName(spine_node.anim, 1, "blink", true);
 
-    spTrackEntry *left = spAnimationState_setAnimationByName(spine_node.anim, 2, "left", true);
-	spTrackEntry *right = spAnimationState_setAnimationByName(spine_node.anim, 3, "right", true);
-	spTrackEntry *up = spAnimationState_setAnimationByName(spine_node.anim, 4, "up", true);
-	spTrackEntry *down = spAnimationState_setAnimationByName(spine_node.anim, 5, "down", true);
+    spAnimationState_setAnimationByName(xe_spine_get_anim(owl), 1, "blink", true);
+
+    spTrackEntry *left = spAnimationState_setAnimationByName(xe_spine_get_anim(owl), 2, "left", true);
+    spTrackEntry *right = spAnimationState_setAnimationByName(xe_spine_get_anim(owl), 3, "right", true);
+    spTrackEntry *up = spAnimationState_setAnimationByName(xe_spine_get_anim(owl), 4, "up", true);
+    spTrackEntry *down = spAnimationState_setAnimationByName(xe_spine_get_anim(owl), 5, "down", true);
 
 	left->alpha = 0;
 	left->mixBlend = SP_MIX_BLEND_ADD;
@@ -169,29 +152,22 @@ int main(int argc, char **argv)
         down->alpha = (lu_maxf(y, 0.5f) - 0.5f) * 1.0f;
         up->alpha = (0.5f - lu_minf(y, 0.5f)) * 1.0f;
 
-        spSkeleton_setToSetupPose(spine_node.skel);
+        spSkeleton_setToSetupPose(xe_spine_get_skel(owl));
         //xe_scene_spine_update(&spine_node, deltasec);
         //xe_scene_spine_update(&windmill_spine, deltasec);
         //xe_scene_spine_update(&coin_spine, deltasec);
+
         xe_spine_animation_pass(deltasec);
 
-        /*
         float curr_time_sec = lu_time_sec(lu_time_elapsed(plat->begin_timestamp));
         const float sin_time = sinf(curr_time_sec);
-        nodes[0].scale_x = 0.5f + sin_time;
-        nodes[0].scale_y = cosf(curr_time_sec) * 2.0f;
-        nodes[2].rotation = curr_time_sec;
-        */
+        xe_transform_scale_v(nodes[0], 0.5f + sin_time, cosf(curr_time_sec) * 2.0f, 1.0f);
+        xe_transform_set_rotation_z(nodes[2], curr_time_sec);
 
         xe_rend_sync();
-        xe_spine_draw_pass();
+        //xe_spine_draw_pass();
         //xe_scene_spine_draw(&windmill_spine);
-        xe_rend_mesh mesh = xe_rend_mesh_add(QUAD_VERTICES, sizeof(QUAD_VERTICES),
-                                           QUAD_INDICES,  sizeof(QUAD_INDICES));
-        for (int i = 0; i < 4; ++i) {
-            nodes[i].mesh = mesh;
-            xe_scene_node_draw(&nodes[i]);
-        }
+        xe_scene_draw();
 
         //xe_scene_spine_draw(&spine_node);
         //xe_scene_spine_draw(&coin_spine);

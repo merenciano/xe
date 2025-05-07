@@ -1,17 +1,10 @@
 #ifndef __XE_RENDERER_H__
 #define __XE_RENDERER_H__
 
+#include <llulu/lu_math.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
-
-typedef struct xe_vec4 {
-    float x, y, z, w;
-} xe_vec4;
-
-typedef struct xe_mat4 {
-    float m[16];
-} xe_mat4;
 
 typedef struct xe_rend_canvas {
     int w;
@@ -72,9 +65,9 @@ typedef struct xe_rend_mesh {
 } xe_rend_mesh;
 
 typedef struct xe_rend_material {
-    xe_mat4 model;
-    xe_vec4 color;
-    xe_vec4 darkcolor;
+    lu_mat4 model;
+    lu_vec4 color;
+    lu_vec4 darkcolor;
     xe_rend_tex tex;
     float pma;
 } xe_rend_material;

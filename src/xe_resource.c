@@ -13,7 +13,7 @@ struct xe_res {
 
 static struct xe_res g_res;
 
-static inline const struct xe_res_image *xe_image_ptr(xe_image img);
+inline const struct xe_res_image *xe_image_ptr(xe_image img);
 const struct xe_res_image *
 xe_image_ptr(xe_image img)
 {

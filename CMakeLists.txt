@@ -21,7 +21,6 @@ target_include_directories(xe PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/extern/include
     ${CMAKE_CURRENT_SOURCE_DIR}/extern/llulu/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/extern/spine/spine-c/include
 )
 
 target_compile_options(xe PRIVATE

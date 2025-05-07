@@ -44,6 +44,7 @@ enum {
 
 typedef unsigned int xe_handle;
 typedef struct {xe_handle id;} xe_image;
+
 xe_image xe_image_load(const char *path, int tex_flags); // XE_IMG_ ... 
 
 //  TODO: SpirV Shaders

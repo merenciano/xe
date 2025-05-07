@@ -2,6 +2,7 @@
 #define __XE_RESOURCE_H__
 
 #include "xe.h"
+#include "xe_scene.h"
 #include "xe_renderer.h"
 
 enum xe_res_state {
@@ -13,15 +14,12 @@ enum xe_res_state {
     XE_RS_FAILED,
 };
 
-enum xe_res_properties {
-    XE_RP_DRAWABLE,
-};
-
 typedef struct xe_resource xe_resource;
 
 struct xe_resource_vtable {
     //int (*update)(struct xe_resource *self, float delta_sec);
-    int (*draw)(struct xe_resource *self, xe_mat4 *transform);
+    int (*draw)(lu_mat4 *transform, void *draw_ctx);
+    void *draw_ctx;
     //int (*release)(struct xe_resource *self);
     //int (*log_status)(struct xe_resource *self);
 };
@@ -30,7 +28,7 @@ struct xe_resource {
     uint16_t version;
     uint16_t state;
     uint32_t mask;
-    struct xe_resource_vtable *vt;
+    struct xe_resource_vtable vt;
 };
 
 static inline uint16_t

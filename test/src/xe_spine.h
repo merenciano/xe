@@ -8,10 +8,11 @@
 
 #include <xe_scene.h>
 
-typedef struct {unsigned int id;} xe_spine;
 /* Atlas is the .atlas, not the image. Skeleton can be either jsor or binary
  * scale and idle_ani are optional (for init purposes)
  */
+void *xe_spine_get_skel(xe_scene_node node);
+void *xe_spine_get_anim(xe_scene_node node);
 xe_scene_node xe_spine_create(const char *atlas, const char *skeleton, float scale, const char *idle_ani);
 //xe_spine xe_spine_load(const char *atlas, const char *skeleton, float scale, const char *idle_ani);
 void xe_spine_animation_pass(float delta_time);

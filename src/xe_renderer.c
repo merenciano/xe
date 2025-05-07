@@ -27,9 +27,9 @@ enum {
 };
 
 typedef struct xe_shader_shape_data {
-    xe_mat4 model;
-    xe_vec4 color;
-    xe_vec4 darkcolor; // darkColor.a == PMA
+    lu_mat4 model;
+    lu_vec4 color;
+    lu_vec4 darkcolor; // darkColor.a == PMA
     int32_t albedo_idx;
     float albedo_layer;
     float pma;
@@ -37,7 +37,7 @@ typedef struct xe_shader_shape_data {
 } xe_shader_shape_data;
 
 typedef struct xe_shader_data {
-    xe_mat4 view_proj;
+    lu_mat4 view_proj;
     xe_shader_shape_data data[XE_MAX_UNIFORMS];
 } xe_shader_data;
 
@@ -82,7 +82,7 @@ typedef struct xe_gl_renderer {
     struct xe_texpool tex;
     int phase; /* for the triphassic fence */
     GLsync fence[3];
-    xe_mat4 view_proj; // TODO: move to scene
+    lu_mat4 view_proj; // TODO: move to scene
 
     xe_rend_pipeline pipeline;
     xe_vbuf vertices;

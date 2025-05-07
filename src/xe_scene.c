@@ -1,67 +1,191 @@
 #include "xe_scene.h"
+#include "xe_renderer.h"
 #include "xe_resource.h"
 #include "xe_platform.h"
 
+#include <llulu/lu_defs.h>
 #include <llulu/lu_math.h>
-#include <spine/extension.h>
-#include <spine/spine.h>
+
+#include <string.h>
+
+static const xe_rend_vtx QUAD_VERTICES[] = {
+    { .x = -1.0f, .y = -1.0f,
+      .u = 0.0f, .v = 0.0f,
+      .color = 0xFFFFFFFF },
+    { .x = -1.0f, .y = 1.0f,
+      .u = 0.0f, .v = 1.0f,
+      .color = 0xFFFFFFFF },
+    { .x = 1.0f, .y = 1.0f,
+      .u = 1.0f, .v = 1.0f,
+      .color = 0xFFFFFFFF },
+    { .x = 1.0f, .y = -1.0f,
+      .u = 1.0f, .v = 0.0f,
+      .color = 0xFFFFFFFF }
+};
+
+static const xe_rend_idx QUAD_INDICES[] = { 0, 1, 2, 0, 2, 3 };
 
 enum {
     XE_SCENE_CAP = 64,
 };
 
 struct xe_graph_node {
-    xe_resource res;
+    struct xe_resource res;
+    int transform_index;
     int child_count;
+};
+
+struct xe_graph_drawable {
+    xe_scene_node node;
+    xe_image img;
+    xe_rend_mesh mesh;
 };
 
 static struct xe_graph_node g_nodes[XE_SCENE_CAP];
 static lu_mat4 g_transforms[XE_SCENE_CAP];
-//static const xe_mat4* g_scene_transforms = (const xe_mat4*)&tr_buf[0];
 static int g_node_count;
+static struct xe_graph_drawable g_drawables[XE_SCENE_CAP];
+static int g_drawable_count;
+
+static inline const struct xe_graph_node *
+get_node(xe_scene_node n)
+{
+    xe_assert(xe_res_index(n.hnd) < g_node_count && "Node index out of range.");
+    return g_nodes + xe_res_index(n.hnd);
+}
+
+static inline lu_mat4 *
+get_tr(xe_scene_node n)
+{
+    xe_assert(get_node(n)->transform_index < g_node_count && "Transform index out of range.");
+    return g_transforms + get_node(n)->transform_index;
+}
+
+xe_scene_node xe_scene_create_node(xe_scene_node_desc *desc)
+{
+    int index = g_node_count++;
+    g_nodes[index].child_count = 0;
+    g_nodes[index].transform_index = index;
+    g_nodes[index].res.state = 0;
+    g_nodes[index].res.version++;
+    g_nodes[index].res.vt.draw = desc->draw_fn;
+    g_nodes[index].res.vt.draw_ctx = desc->draw_ctx;
+    xe_scene_node node = { .hnd = xe_res_handle_gen(g_nodes[index].res.version, index)};
+    xe_scene_tr_init(node, desc->pos_x, desc->pos_y, desc->pos_z, desc->scale);
+    return node;
+}
+
+int xe_drawable_draw(lu_mat4 *tr, void *draw_ctx)
+{
+    if (!draw_ctx) {
+        XE_LOG_ERR("draw_ctx = NULL, ignoring xe_drawable_draw call.");
+        return XE_ERR_ARG;
+    }
+    struct xe_graph_drawable *node = draw_ctx;
+    node->mesh = xe_rend_mesh_add(QUAD_VERTICES, sizeof(QUAD_VERTICES),
+                                        QUAD_INDICES,  sizeof(QUAD_INDICES));
+
+    int draw_id = xe_rend_material_add((xe_rend_material){.model = *tr, .color = LU_VEC(1.0f, 1.0f, 1.0f, 1.0f), .darkcolor = LU_VEC(0.0f, 0.0f, 0.0f, 1.0f), .tex = xe_image_ptr(node->img)->tex, .pma = 0});
+    xe_rend_submit(node->mesh, draw_id);
+    return XE_OK;
+}
+
+xe_scene_node xe_scene_create_drawable(xe_scene_node_desc *desc, xe_image img, xe_rend_mesh mesh)
+{
+    struct xe_graph_drawable *node = &g_drawables[g_drawable_count++];
+    node->img = img;
+    node->mesh = mesh;
+    desc->draw_fn = xe_drawable_draw;
+    desc->draw_ctx = node;
+    node->node = xe_scene_create_node(desc);
+    return node->node;
+}
 
 float* xe_scene_tr_init(xe_scene_node node, float px, float py, float pz, float scale)
 {
-    float *tr = g_transforms[node.hnd].m;
+    float *tr = g_transforms[g_nodes[xe_res_index(node.hnd)].transform_index].m;
     lu_mat4_identity(tr);
     lu_mat4_scale(tr, tr, (float[3]) { scale, scale, scale });
     return lu_mat4_translate(tr, tr, (float[3]) { px, py, pz });
 }
 
+const float *
+xe_transform_get(xe_scene_node node)
+{
+    return get_tr(node)->m;
+}
+
+void
+xe_transform_set(xe_scene_node node, const float *mat)
+{
+    memcpy(get_tr(node)->m, mat, sizeof(lu_mat4));
+}
+
+const float *
+xe_transform_translate(xe_scene_node node, float x, float y, float z)
+{
+    float *tr = get_tr(node)->m;
+    return lu_mat4_translate(tr, tr, (float[3]){x, y, z});
+}
+
+const float *
+xe_transform_scale(xe_scene_node node, float k)
+{
+    float *tr = get_tr(node)->m;
+    return lu_mat4_scale(tr, tr, &LU_VEC(k, k, k).x);
+}
+
+const float *
+xe_transform_scale_v(xe_scene_node node, float x_factor, float y_factor, float z_factor)
+{
+    float *tr = get_tr(node)->m;
+    return lu_mat4_scale(tr, tr, &LU_VEC(x_factor, y_factor, z_factor).x);
+
+}
+
+const float *
+xe_transform_set_rotation_x(xe_scene_node node, float rad)
+{
+    float *tr = get_tr(node)->m;
+    return lu_mat4_rotation_x(tr, rad);
+}
+
+const float *
+xe_transform_set_rotation_y(xe_scene_node node, float rad)
+{
+    float *tr = get_tr(node)->m;
+    return lu_mat4_rotation_y(tr, rad);
+}
+
+const float *
+xe_transform_set_rotation_z(xe_scene_node node, float rad)
+{
+    float *tr = get_tr(node)->m;
+    return lu_mat4_rotation_z(tr, rad);
+}
+
+const float *
+xe_transform_set_pos(xe_scene_node node, float x, float y, float z)
+{
+    float *tr = get_tr(node)->m;
+    return lu_mat4_translation(tr, tr, &LU_VEC(x, y, z).x);
+}
+
+const float *
+xe_transform_set_scale(xe_scene_node node, float x, float y, float z)
+{
+    float *tr = get_tr(node)->m;
+    return lu_mat4_scaling(tr, tr, &LU_VEC(x, y, z).x);
+}
+
+const float *
+xe_transform_rotate(xe_scene_node node, lu_vec3 axis, float rad)
+{
+    float *tr = get_tr(node)->m;
+    return lu_mat4_rotation_axis(tr, &axis.x, rad);
+}
+
 #define XE_SCENE_ITER_STACK_CAP 64
-
-/*
-const xe_image_desc g_images[] = {
-    { .id = {"owl"}, .img_path = "./assets/owl.png"},
-    { .id = {"default"}, .img_path = "./assets/default_tex.png"},
-    { .id = {"test"}, .img_path = "./assets/tex_test.png"},
-};
-
-const xe_shader_desc g_shaders[] = {
-    { .id = {"generic"}, .vert_path = "./assets/vert.glsl", .frag_path =
-"./assets/frag.glsl" },
-};
-
-const xe_spine_desc g_spines[] = {
-    { .id = {"owl"}, .atlas_path = "./assets/owl.atlas", .skeleton_path =
-"./assets/owl-pro.json" },
-};
-
-const xe_scenenode_desc g_nodes[] = {
-    {
-        .pos_x = 0.0f, .pos_y = 0.0f, .scale_x = 1.0f, .scale_y = 1.0f,
-.rotation = 0.0f, .type = XE_NODE_SKELETON, .asset_id = {"owl"}, .child_count =
-0
-    }
-};
-
-enum {
-    XE_ASSETS_IMG_COUNT = sizeof(g_images) / sizeof(g_images[0]),
-    XE_ASSETS_SHADER_COUNT = sizeof(g_shaders) / sizeof(g_shaders[0]),
-    XE_ASSETS_SPINE_COUNT = sizeof(g_spines) / sizeof(g_spines[0]),
-    XE_SCENE_NODE_COUNT = sizeof(g_nodes) / sizeof(g_nodes[0])
-};
-*/
 
 typedef struct xe_scene_iter_state_t {
     int remaining_children;
@@ -115,18 +239,6 @@ static inline bool xe_scene_step_state(xe_scene_iter_stack_t* stack)
     return --stack->buf[stack->count - 1].remaining_children;
 }
 
-xe_scene_node xe_scene_node_create(xe_resource *out_res)
-{
-    int i = g_node_count++;
-    lu_mat4_identity(g_transforms[i].m);
-    g_nodes[i].child_count = 0;
-    if (out_res) {
-        out_res = &g_nodes[i].res;
-    }
-
-    return (xe_scene_node){ .hnd = i };
-}
-
 void xe_scene_draw(void)
 {
     xe_scene_iter_stack_t state = { .count = 0 };
@@ -143,11 +255,11 @@ void xe_scene_draw(void)
             }
         }
 
-        if (g_nodes[i].res.mask & XE_RP_DRAWABLE) {
+        if (g_nodes[i].res.vt.draw) {
             const xe_scene_iter_state_t* curr = xe_scene_get_state(&state);
-            xe_mat4 model;
-            lu_mat4_multiply(model.m, curr->trw.m, g_transforms[i].m);
-            g_nodes[i].res.vt->draw(&g_nodes[i].res, &model);
+            lu_mat4 model;
+            lu_mat4_multiply(model.m, curr->trw.m, g_transforms[g_nodes[i].transform_index].m);
+            g_nodes[i].res.vt.draw(&model, g_nodes[i].res.vt.draw_ctx);
         }
     }
 }
