@@ -14,9 +14,48 @@
 #include <stdbool.h>
 #include <assert.h>
 
+xe_platform *plat = NULL;
+
+typedef struct {
+    spTrackEntry *left;
+    spTrackEntry *right;
+    spTrackEntry *up;
+    spTrackEntry *down;
+} owl_tracks;
+
+static void owl_init(xe_scene_node self, void *ctx)
+{
+    owl_tracks *tracks = ctx;
+    spAnimationState_setAnimationByName(xe_spine_get_anim(self), 1, "blink", true);
+    tracks->left = spAnimationState_setAnimationByName(xe_spine_get_anim(self), 2, "left", true);
+    tracks->right = spAnimationState_setAnimationByName(xe_spine_get_anim(self), 3, "right", true);
+    tracks->up = spAnimationState_setAnimationByName(xe_spine_get_anim(self), 4, "up", true);
+    tracks->down = spAnimationState_setAnimationByName(xe_spine_get_anim(self), 5, "down", true);
+    tracks->left->alpha = 0;
+    tracks->left->mixBlend = SP_MIX_BLEND_ADD;
+    tracks->right->alpha = 0;
+    tracks->right->mixBlend = SP_MIX_BLEND_ADD;
+    tracks->up->alpha = 0;
+    tracks->up->mixBlend = SP_MIX_BLEND_ADD;
+    tracks->down->alpha = 0;
+    tracks->down->mixBlend = SP_MIX_BLEND_ADD;
+}
+
+static void owl_update(xe_scene_node self, void *ctx)
+{
+    owl_tracks *tracks = ctx;
+    float x = plat->mouse_x / plat->config.display_w;
+    float y = plat->mouse_y / plat->config.display_h;
+    tracks->left->alpha = (lu_maxf(x, 0.5f) - 0.5f) * 1.0f;
+    tracks->right->alpha = (0.5f - lu_minf(x, 0.5f)) * 1.0f;
+    tracks->down->alpha = (lu_maxf(y, 0.5f) - 0.5f) * 1.0f;
+    tracks->up->alpha = (0.5f - lu_minf(y, 0.5f)) * 1.0f;
+    spSkeleton_setToSetupPose(xe_spine_get_skel(self));
+}
+
 int main(int argc, char **argv)
 {
-    xe_platform *plat = xe_platform_create(&(xe_platform_config){
+    plat = xe_platform_create(&(xe_platform_config){
         .title = "XE TEST",
         .display_w = 1200,
         .display_h = 900,
@@ -37,11 +76,13 @@ int main(int argc, char **argv)
         xe_image_load("./assets/tex_test_3.png", 0)
     };
  
+    owl_tracks owltracks;
     xe_scene_node owl = xe_spine_create("./assets/owl-pma.atlas", "./assets/owl.json", 0.03f, "idle");
     xe_scene_node windmill = xe_spine_create("./assets/windmill-pma.atlas", "./assets/windmill.json", 0.025f, "animation");
     xe_scene_node coin = xe_spine_create("./assets/coin-pma.atlas", "./assets/coin-pro.json", 0.05f, "animation");
     xe_transform_translate(windmill, 0.0f, -10.0f, 0.0f);
-    
+
+    owl_init(owl, &owltracks);
 
     int64_t elapsed = lu_time_elapsed(timer);
     plat->timers_data.img_load = elapsed;
@@ -58,20 +99,6 @@ int main(int argc, char **argv)
         nodes[i] = xe_scene_create_drawable(&desc, tex_test[i], (xe_rend_mesh){});
     }
 
-    /* owl init */
-    spAnimationState_setAnimationByName(xe_spine_get_anim(owl), 1, "blink", true);
-    spTrackEntry *left = spAnimationState_setAnimationByName(xe_spine_get_anim(owl), 2, "left", true);
-    spTrackEntry *right = spAnimationState_setAnimationByName(xe_spine_get_anim(owl), 3, "right", true);
-    spTrackEntry *up = spAnimationState_setAnimationByName(xe_spine_get_anim(owl), 4, "up", true);
-    spTrackEntry *down = spAnimationState_setAnimationByName(xe_spine_get_anim(owl), 5, "down", true);
-	left->alpha = 0;
-	left->mixBlend = SP_MIX_BLEND_ADD;
-	right->alpha = 0;
-	right->mixBlend = SP_MIX_BLEND_ADD;
-	up->alpha = 0;
-	up->mixBlend = SP_MIX_BLEND_ADD;
-	down->alpha = 0;
-	down->mixBlend = SP_MIX_BLEND_ADD;
 
     elapsed = lu_time_elapsed(timer);
     plat->timers_data.scene_load = elapsed;
@@ -80,14 +107,7 @@ int main(int argc, char **argv)
     float deltasec = xe_platform_update();
 
     while(!plat->close) {
-        /* owl update */
-        float x = plat->mouse_x / plat->config.display_w;
-        float y = plat->mouse_y / plat->config.display_h;
-        left->alpha = (lu_maxf(x, 0.5f) - 0.5f) * 1.0f;
-        right->alpha = (0.5f - lu_minf(x, 0.5f)) * 1.0f;
-        down->alpha = (lu_maxf(y, 0.5f) - 0.5f) * 1.0f;
-        up->alpha = (0.5f - lu_minf(y, 0.5f)) * 1.0f;
-        spSkeleton_setToSetupPose(xe_spine_get_skel(owl));
+        owl_update(owl, &owltracks);
 
         /* nodes update */
         float curr_time_sec = lu_time_sec(lu_time_elapsed(plat->begin_timestamp));

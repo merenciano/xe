@@ -67,18 +67,29 @@ enum {
     XE_CFG_MAX_RESOURCES = 64,
     XE_CFG_MAX_COMPONENT_TYPES = 64,
     XE_CFG_MAX_SCENE_GRAPH_DEPTH = 64,
+    XE_CFG_SCENE_MEM_ARENA_BYTES = 1024 << 10,
 };
 
 enum { /* Component identifiers */
     XE_COMP_SGNODE, /* scene graph node: transform, hierarchy, visibility */
+    XE_COMP_STATE,
     XE_COMP_SHAPE, /* drawable shape: mesh, material */
     XE_COMP_CALLBACK, /* callbacks for trace events (init, update, print) */
-    XE_COMP_SCRIPT, /*  */
+    XE_COMP_SCRIPT,
     XE_COMP_BUILTIN_COUNT,
     XE_COMP_MAX = 64
 };
 
 typedef struct {xe_handle hnd;} xe_entity;
+
+typedef struct xe_comp_state {
+    xe_entity ent;
+    void *state;
+    void (*init)(xe_entity self, void *state);
+    void (*update)(xe_entity self, void *state);
+    void (*destroy)(xe_entity self, void *state);
+} xe_comp_state;
+
 xe_entity xe_ent_create(const char *name);
 void xe_ent_delete(xe_entity entity);
 void xe_ent_add_comp(xe_entity entity, int type);

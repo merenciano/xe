@@ -29,7 +29,6 @@ enum xe_res_state {
 typedef struct xe_resource xe_resource;
 
 struct xe_resource_vtable {
-    //int (*update)(struct xe_resource *self, float delta_sec);
     int (*draw)(lu_mat4 *transform, void *draw_ctx);
     void *draw_ctx;
     //int (*release)(struct xe_resource *self);

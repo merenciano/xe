@@ -8,6 +8,20 @@
 
 #include <xe_scene.h>
 
+typedef struct xe_spine_desc {
+	const char *atlas_path;
+	const char *skel_path;
+	float pos_x;
+	float pos_y;
+	float scale_x;
+	float scale_y;
+	float rot;
+	float skel_scale;
+	const char *anim_name;
+	int anim_loop;
+
+} xe_spine_desc;
+
 /* Atlas is the .atlas, not the image. Skeleton can be either jsor or binary
  * scale and idle_ani are optional (for init purposes)
  */

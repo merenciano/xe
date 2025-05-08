@@ -27,7 +27,8 @@ struct xe_ent {
 struct xe_comp_pool {
     void *data; /* array of sequential components */
     size_t count;
-    size_t elem_sz;
+    size_t elem_sz; /* in bytes */
+    size_t capacity; /* in bytes */
     void (*init)(void *self);
 };
 
@@ -49,12 +50,19 @@ struct xe_scene_data {
     struct xe_comp_pool comp[XE_COMP_MAX];
     int last_ent;
     int comp_type_count;
+    char *mem_head;
+    char mem_arena[XE_CFG_SCENE_MEM_ARENA_BYTES];
 };
 
 void xe_scene_init(struct xe_scene_data *scene)
 {
     memset(scene, 0, sizeof(*scene));
+    scene->mem_head = scene->mem_arena;
     //scene->comp[XE_COMP_SGNODE].elem_sz = sizeof()
+    scene->comp[XE_COMP_STATE].elem_sz = sizeof(xe_comp_state);
+    scene->comp[XE_COMP_STATE].capacity = sizeof(xe_comp_state);
+    scene->comp[XE_COMP_STATE].data = scene->mem_head;
+    scene->mem_head += scene->comp[XE_COMP_STATE].capacity * scene->comp[XE_COMP_STATE].elem_sz;
     scene->comp_type_count = XE_COMP_BUILTIN_COUNT;
 }
 
