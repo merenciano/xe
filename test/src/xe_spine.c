@@ -1,7 +1,6 @@
 #include "xe_spine.h"
-#include "xe.h"
 #include "xe_renderer.h"
-#include "xe_resource.h"
+#include "../src/scene.h"
 
 #include <xe_platform.h>
 
@@ -226,11 +225,14 @@ xe_spine_draw(lu_mat4 *tr, void *draw_ctx)
             xe_rend_submit(mesh, draw);
             current_batch.idx_count = 0;
             current_batch.vtx_count = 0;
-            current_batch.material.darkcolor = dark_color;
         }
 
+        current_batch.material.darkcolor = dark_color;
         memcpy(&current_batch.vert[current_batch.vtx_count], vertices, slot_vtx_count * sizeof(xe_rend_vtx));
-        memcpy(&current_batch.indices[current_batch.idx_count], indices, slot_idx_count * sizeof(xe_rend_idx));
+        //memcpy(&current_batch.indices[current_batch.idx_count], indices, slot_idx_count * sizeof(xe_rend_idx));
+        for (int i = 0; i < slot_idx_count; ++i) {
+            current_batch.indices[current_batch.idx_count + i] = indices[i] + current_batch.vtx_count;
+        }
         current_batch.vtx_count += slot_vtx_count;
         current_batch.idx_count += slot_idx_count;
         vertices = vertbuf;

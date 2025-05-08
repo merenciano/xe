@@ -1,17 +1,16 @@
-#include "xe.h"
-#include "xe_resource.h"
+#include "scene.h"
 #include "xe_renderer.h"
 #include "xe_platform.h"
 
 #include <stb/stb_image.h>
 #include <stdint.h>
 
-struct xe_res {
+struct xe_res_arr {
     struct xe_res_image img[XE_MAX_IMAGES];
 
 };
 
-static struct xe_res g_res;
+static struct xe_res_arr g_res;
 
 inline const struct xe_res_image *xe_image_ptr(xe_image img);
 const struct xe_res_image *

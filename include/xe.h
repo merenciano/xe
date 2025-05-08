@@ -4,6 +4,7 @@
 /*
     TODO:
      -> Utils: Alloc, Future, Async jobs, Hash map, Pool (sparse)
+     -> Resource ref containerof (like kobject)
      -> Profiling/Debug: Tracing 
      -> Fill the scene with more assets
      -> UBO to SSAO
@@ -33,19 +34,24 @@
  * XE_CFG_ASSERT(COND): assert function. If not defined <assert.h> will be used.
  */
 
-/* Image API */
-enum {
-    XE_MAX_IMAGES = 32,
-};
+/*
+ * SOURCE KEYWORDS (for grep)
+ *  lu_ : utilities lib prefix (generic utilities collection)
+ *  xe_ : project prefix (namespace)
+ *  ent_ : entity prefix
+ *  comp_ : component prefix
+ *  sys_ : system prefix
+ *  
+ *  TODO: In comments. Future tasks, ideas or things to try.
+ *  FIXME: In comments. Bugs that should be fixed anytime in the future (before the next minor version bump if possible)
+ *  NOTE: In comments. Personal anotations
+ *  API <module name>: In comments. Public api definitions.
+ *
+ *  handle, hnd: opaque reference to internally managed resource
+ *  transform, tr: transformation matrix
+ *  
+ */
 
-enum {
-    XE_IMG_PREMUL_ALPHA = 0x0001,
-};
-
-typedef unsigned int xe_handle;
-typedef struct {xe_handle id;} xe_image;
-
-xe_image xe_image_load(const char *path, int tex_flags); // XE_IMG_ ... 
 
 //  TODO: SpirV Shaders
 

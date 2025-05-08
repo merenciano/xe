@@ -1,12 +1,66 @@
+#include "scene.h"
 #include "xe_scene.h"
 #include "xe_renderer.h"
-#include "xe_resource.h"
 #include "xe_platform.h"
 
 #include <llulu/lu_defs.h>
 #include <llulu/lu_math.h>
+#include <llulu/lu_str.h>
 
 #include <string.h>
+
+
+/*
+ * FUTURE DATA
+ */
+
+enum xe_ent_flags {
+    XE_ENT_FREE = 0x0001,
+};
+
+struct xe_ent {
+    uint64_t comp_mask;
+    int ver;
+    uint32_t flags;
+};
+
+struct xe_comp_pool {
+    void *data; /* array of sequential components */
+    size_t count;
+    size_t elem_sz;
+    void (*init)(void *self);
+};
+
+struct xe_ent_names {
+    lu_sstr names[XE_CFG_MAX_ENTITIES];
+    uint16_t indices[XE_CFG_MAX_ENTITIES];
+};
+
+struct xe_res_names {
+    lu_sstr names[XE_CFG_MAX_RESOURCES];
+    uint16_t indices[XE_CFG_MAX_RESOURCES];
+};
+
+struct xe_scene_data {
+    struct xe_ent_names names_ent;
+    struct xe_ent_names names_res;
+    struct xe_ent ents[XE_CFG_MAX_ENTITIES];
+    struct xe_resource res[XE_CFG_MAX_RESOURCES];
+    struct xe_comp_pool comp[XE_COMP_MAX];
+    int last_ent;
+    int comp_type_count;
+};
+
+void xe_scene_init(struct xe_scene_data *scene)
+{
+    memset(scene, 0, sizeof(*scene));
+    //scene->comp[XE_COMP_SGNODE].elem_sz = sizeof()
+    scene->comp_type_count = XE_COMP_BUILTIN_COUNT;
+}
+
+/*
+ * END FUTURE DATA
+ */
 
 static const xe_rend_vtx QUAD_VERTICES[] = {
     { .x = -1.0f, .y = -1.0f,
@@ -185,8 +239,6 @@ xe_transform_rotate(xe_scene_node node, lu_vec3 axis, float rad)
     return lu_mat4_rotation_axis(tr, &axis.x, rad);
 }
 
-#define XE_SCENE_ITER_STACK_CAP 64
-
 typedef struct xe_scene_iter_state_t {
     int remaining_children;
     int parent_index;
@@ -194,7 +246,7 @@ typedef struct xe_scene_iter_state_t {
 } xe_scene_iter_state_t;
 
 typedef struct xe_scene_iter_stack_t {
-    xe_scene_iter_state_t buf[XE_SCENE_ITER_STACK_CAP];
+    xe_scene_iter_state_t buf[XE_CFG_MAX_SCENE_GRAPH_DEPTH];
     size_t count;
 } xe_scene_iter_stack_t;
 
@@ -204,8 +256,8 @@ xe_scene_get_state(xe_scene_iter_stack_t* stack)
     static const xe_scene_iter_state_t EMPTY = {
         .remaining_children = 0,
         .parent_index = -1,
-        .trw = { 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f,
-            0.0f, 0.0f, 0.0f, 0.0f, 1.0f }
+        .trw = {.m = { 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f,
+            0.0f, 0.0f, 0.0f, 0.0f, 1.0f }}
     };
 
     if (stack && stack->count > 0) {
@@ -231,7 +283,7 @@ static inline void xe_scene_push_state(xe_scene_iter_stack_t* stack,
     lu_mat4_multiply(stack->buf[stack->count].trw.m, curr->trw.m,
         g_transforms[node_idx].m);
     stack->count++;
-    assert(stack->count < XE_SCENE_ITER_STACK_CAP);
+    assert(stack->count < XE_CFG_MAX_SCENE_GRAPH_DEPTH);
 }
 
 static inline bool xe_scene_step_state(xe_scene_iter_stack_t* stack)
@@ -239,11 +291,38 @@ static inline bool xe_scene_step_state(xe_scene_iter_stack_t* stack)
     return --stack->buf[stack->count - 1].remaining_children;
 }
 
+struct xe_draw_task {
+    lu_mat4 model;
+    int (*func)(lu_mat4 *, void *);
+    void *ctx;
+};
+
 void xe_scene_draw(void)
 {
-    xe_scene_iter_stack_t state = { .count = 0 };
+    static struct xe_draw_task draws[XE_CFG_MAX_ENTITIES];
+    static const struct xe_draw_task *DRAWS_END_IT = draws + XE_CFG_MAX_ENTITIES;
+    struct xe_draw_task *dt_wit = draws; /* draw task write iterator */
+    xe_scene_iter_stack_t state = {
+        .buf = {{
+            .remaining_children = g_node_count,
+            .parent_index = -1,
+            .trw = { .m = { 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f }}
+        }},
+        .count = 1
+    };
+
     for (int i = 0; i < g_node_count; ++i) {
-        if (g_nodes[i].child_count > 0) {
+        struct xe_graph_node *node = g_nodes + i;
+        if (node->res.vt.draw) {
+            assert(dt_wit < DRAWS_END_IT);
+            dt_wit->func = node->res.vt.draw;
+            dt_wit->ctx = node->res.vt.draw_ctx;
+            const xe_scene_iter_state_t* curr = xe_scene_get_state(&state);
+            lu_mat4_multiply(dt_wit->model.m, curr->trw.m, g_transforms[node->transform_index].m);
+            ++dt_wit;
+        }
+
+        if (node->child_count > 0) {
             xe_scene_push_state(&state, i);
         } else {
             if (!xe_scene_step_state(&state)) {
@@ -254,12 +333,9 @@ void xe_scene_draw(void)
                 }
             }
         }
+    }
 
-        if (g_nodes[i].res.vt.draw) {
-            const xe_scene_iter_state_t* curr = xe_scene_get_state(&state);
-            lu_mat4 model;
-            lu_mat4_multiply(model.m, curr->trw.m, g_transforms[g_nodes[i].transform_index].m);
-            g_nodes[i].res.vt.draw(&model, g_nodes[i].res.vt.draw_ctx);
-        }
+    for (struct xe_draw_task *task = draws; task < dt_wit; ++task) {
+        task->func(&task->model, task->ctx);
     }
 }
