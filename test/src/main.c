@@ -111,7 +111,7 @@ int main(int argc, char **argv)
 
         /* nodes update */
         float curr_time_sec = lu_time_sec(lu_time_elapsed(plat->begin_timestamp));
-        xe_transform_set_scale(nodes[0], 1.0f + sinf(curr_time_sec), 1.0f + cosf(curr_time_sec) * 2.0f, 1.0f);
+        xe_transform_set_scale(nodes[0], 1.0f + lu_sin(curr_time_sec), 1.0f + lu_cos(curr_time_sec) * 2.0f, 1.0f);
         xe_transform_set_rotation_z(nodes[2], curr_time_sec);
 
         /* Systems */

@@ -100,7 +100,7 @@
 #define SIGNUM(A) ((A) < 0? -1.0f: (A) > 0 ? 1.0f : 0.0f)
 #define CEIL(a) ((float)ceil(a))
 
-#ifdef __STDC_VERSION__
+#if defined(__STDC_VERSION__) && !defined(__TINYC__)
 #define FMOD(A,B) fmodf(A, B)
 #define ATAN2(A,B) atan2f(A, B)
 #define SIN(A) sinf(A)

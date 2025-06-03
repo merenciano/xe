@@ -369,8 +369,8 @@ xe_spine_create(const char *atlas, const char *skel_json, float scale, const cha
     return sp->node;
 }
 
+enum { XE_MAX_ATLAS_PAGES = 64 };
 static struct xe_atlas_pages_arr {
-    enum { XE_MAX_ATLAS_PAGES = 64 };
     char filenames[XE_SP_FILENAME_LEN][XE_MAX_ATLAS_PAGES];
     xe_image img[XE_MAX_ATLAS_PAGES];
 } g_atlas_pages;
