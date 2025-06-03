@@ -27,14 +27,14 @@ xe_image_tex(xe_image image)
     xe_assert(img);
     if (img->res.version != xe_res_version(image.id)) {
         XE_LOG_ERR("Dangling handle.");
-        return xe_rend_tex_invalid();
+        return (xe_rend_tex){.idx = -1, .layer = -1};
     }
 
     switch (img->res.state) {
         case XE_RS_COMMITED:
             return img->tex;
         case XE_RS_STAGED:
-            xe_rend_tex_set(img->tex, img->data);
+            xe_rend_tex_load(img->tex, img->data);
             return img->tex;
 
         default:
@@ -42,7 +42,7 @@ xe_image_tex(xe_image image)
             xe_assert(0);
             break;
     }
-    return xe_rend_tex_invalid();
+    return (xe_rend_tex){.idx = -1, .layer = -1};
 }
 
 static inline int
@@ -90,7 +90,7 @@ xe_image_load(const char *path, int tex_flags)
             assert(img->tex.idx >= 0);
             img->res.state = XE_RS_STAGED;
 
-            xe_rend_tex_set(img->tex, img->data);
+            xe_rend_tex_load(img->tex, img->data);
             img->res.state = XE_RS_COMMITED;
         }
     }

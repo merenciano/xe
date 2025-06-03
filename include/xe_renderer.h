@@ -2,7 +2,6 @@
 #define __XE_RENDERER_H__
 
 #include <llulu/lu_math.h>
-#include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -19,7 +18,6 @@ typedef struct xe_rend_config {
 } xe_rend_config;
 
 typedef uint16_t xe_rend_idx;
-typedef int xe_rend_draw_id;
 
 enum xe_rend_tex_pixel_format {
     XE_TEX_R = 0,
@@ -72,22 +70,20 @@ typedef struct xe_rend_material {
     float pma;
 } xe_rend_material;
 
-static inline xe_rend_tex
-xe_rend_tex_invalid(void)
-{
-    return (xe_rend_tex){.idx = -1, .layer = -1};
-}
-
 bool xe_rend_init(xe_rend_config *config);
-xe_rend_tex xe_rend_tex_alloc(xe_rend_texfmt format);
-void xe_rend_tex_set(xe_rend_tex tex, void *data);
-xe_rend_mesh xe_rend_mesh_add(const void *vert, size_t vert_size, const void *indices, size_t indices_size);
-void xe_rend_draw(xe_rend_mesh mesh, xe_rend_material *material);
-void xe_rend_render();
 
 /* This function should be called on each frame before writing data to any persistent coherent buffer. */
 void xe_rend_sync(void);
-void xe_rend_shader_reload(void);
+
+/* Does nothing unless XE_CFG_SLOW_AND_UNNECESSARY_SHUTDOWN is defined. */
 void xe_rend_shutdown(void);
+
+xe_rend_tex xe_rend_tex_alloc(xe_rend_texfmt format);
+void xe_rend_tex_load(xe_rend_tex tex, void *data);
+void xe_rend_shader_load(void);
+
+void xe_rend_drawlist_push(const void *vert, size_t vert_size, const void *indices, size_t indices_size, xe_rend_material *material);
+void xe_rend_render();
+
 
 #endif /* __XE_RENDERER_H__ */

@@ -216,12 +216,10 @@ xe_spine_draw(lu_mat4 *tr, void *draw_ctx)
                 break;
         };
 
-        if (((current_batch.vtx_count << 1) > XE_SPBATCH_VTX_CAP) ||
-            ((current_batch.idx_count << 1) > XE_SPBATCH_IDX_CAP) ||
-            (current_batch.vtx_count && (memcmp(&current_batch.material.darkcolor, &dark_color, sizeof(dark_color))))) {
-            xe_rend_mesh mesh = xe_rend_mesh_add(current_batch.vert, current_batch.vtx_count * sizeof(xe_rend_vtx),
-                                                 current_batch.indices, current_batch.idx_count * sizeof(xe_rend_idx));
-            xe_rend_draw(mesh, &current_batch.material);
+        if ((current_batch.vtx_count << 1 > XE_SPBATCH_VTX_CAP) || (current_batch.idx_count << 1 > XE_SPBATCH_IDX_CAP) ||
+                (current_batch.vtx_count && (memcmp(&current_batch.material.darkcolor, &dark_color, sizeof(dark_color))))) {
+            xe_rend_drawlist_push(current_batch.vert, current_batch.vtx_count * sizeof(xe_rend_vtx),
+                current_batch.indices, current_batch.idx_count * sizeof(xe_rend_idx), &current_batch.material);
             current_batch.idx_count = 0;
             current_batch.vtx_count = 0;
         }
@@ -243,10 +241,8 @@ xe_spine_draw(lu_mat4 *tr, void *draw_ctx)
 	spSkeletonClipping_clipEnd2(g_clipper);
 
     if (current_batch.vtx_count) {
-        xe_rend_mesh mesh = xe_rend_mesh_add(current_batch.vert, current_batch.vtx_count * sizeof(xe_rend_vtx),
-                                                current_batch.indices, current_batch.idx_count * sizeof(xe_rend_idx));
-
-        xe_rend_draw(mesh, &current_batch.material);
+        xe_rend_drawlist_push(current_batch.vert, current_batch.vtx_count * sizeof(xe_rend_vtx),
+            current_batch.indices, current_batch.idx_count * sizeof(xe_rend_idx), &current_batch.material);
         current_batch.idx_count = 0;
         current_batch.vtx_count = 0;
     }

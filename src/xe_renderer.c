@@ -28,11 +28,11 @@ enum {
 
 typedef struct xe_shader_shape_data {
     lu_mat4 model;
-    lu_vec4 color;
+    lu_vec4 color; // TODO: Remove since it's in the vertex already
     lu_vec4 darkcolor; // darkColor.a == PMA
     int32_t albedo_idx;
     float albedo_layer;
-    float pma;
+    float pma; // TODO: Use DarkColor.a ???
     float padding;
 } xe_shader_shape_data;
 
@@ -60,6 +60,7 @@ enum {
     XE_VBUF_MAP_FLAGS = GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT,
     XE_VBUF_STORAGE_FLAGS = XE_VBUF_MAP_FLAGS | GL_DYNAMIC_STORAGE_BIT
 };
+
 typedef struct xe_vbuf {
     void *data;
     size_t head;
@@ -172,11 +173,11 @@ xe_shader_gpu_setup(void)
     lu_mat4_multiply(g_r.view_proj.m, proj, view);
 
     g_r.pipeline.shader.program_id = glCreateProgram();
-    xe_rend_shader_reload();
+    xe_rend_shader_load();
 }
 
 void
-xe_rend_shader_reload(void)
+xe_rend_shader_load(void)
 {
     char src_buf[XE_MAX_SHADER_SOURCE_LEN];
     const GLchar *src1 = &src_buf[0];
@@ -275,7 +276,7 @@ xe_shader_check_reload(void)
             if (reload) {
                 last_modified = mtime;
                 XE_LOG("Reloading shaders.");
-                xe_rend_shader_reload();
+                xe_rend_shader_load();
             }
             timer = time(NULL);
         }
@@ -310,7 +311,7 @@ xe_rend_tex_alloc(xe_rend_texfmt fmt)
 }
 
 void
-xe_rend_tex_set(xe_rend_tex tex, void *data)
+xe_rend_tex_load(xe_rend_tex tex, void *data)
 {
     xe_assert(tex.idx < XE_MAX_TEXTURE_ARRAYS && tex.layer < XE_MAX_TEXTURE_LAYERS);
     const xe_rend_texfmt *fmt = &g_r.tex.fmt[tex.idx];
@@ -397,7 +398,7 @@ xe_rend_init(xe_rend_config *cfg)
     return true;
 }
 
-xe_rend_mesh
+static inline xe_rend_mesh
 xe_rend_mesh_add(const void *vert, size_t vert_size, const void *indices, size_t indices_size)
 {
 #ifdef XE_DEBUG
@@ -426,7 +427,7 @@ xe_rend_mesh_add(const void *vert, size_t vert_size, const void *indices, size_t
     return mesh;
 }
 
-static inline xe_rend_draw_id
+static inline int
 xe_rend_material_add(const xe_rend_material *mat)
 {
 #ifdef XE_DEBUG
@@ -447,7 +448,7 @@ xe_rend_material_add(const xe_rend_material *mat)
 }
 
 static inline void
-xe_rend_submit(xe_rend_mesh mesh, xe_rend_draw_id drawidx)
+xe_rend_submit(xe_rend_mesh mesh, int drawidx)
 {
 #ifdef XE_DEBUG
     xe_rend_sync();
@@ -468,6 +469,14 @@ xe_rend_submit(xe_rend_mesh mesh, xe_rend_draw_id drawidx)
 void
 xe_rend_draw(xe_rend_mesh mesh, xe_rend_material *material)
 {
+    int draw_id = xe_rend_material_add(material);
+    xe_rend_submit(mesh, draw_id);
+}
+
+void
+xe_rend_drawlist_push(const void *vert, size_t vert_size, const void *indices, size_t indices_size, xe_rend_material *material)
+{
+    xe_rend_mesh mesh = xe_rend_mesh_add(vert, vert_size, indices, indices_size);
     int draw_id = xe_rend_material_add(material);
     xe_rend_submit(mesh, draw_id);
 }

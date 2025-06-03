@@ -77,8 +77,6 @@ xe_scene_node xe_scene_create_node(xe_scene_node_desc *desc)
     g_nodes[index].transform_index = index;
     g_nodes[index].res.state = 0;
     g_nodes[index].res.version++;
-    g_nodes[index].res.vt.draw = desc->draw_fn;
-    g_nodes[index].res.vt.draw_ctx = desc->draw_ctx;
     xe_scene_node node = { .hnd = xe_res_handle_gen(g_nodes[index].res.version, index)};
     xe_scene_tr_init(node, desc->pos_x, desc->pos_y, desc->pos_z, desc->scale);
     return node;
@@ -91,11 +89,8 @@ int xe_drawable_draw(lu_mat4 *tr, void *draw_ctx)
         return XE_ERR_ARG;
     }
     struct xe_graph_drawable *node = draw_ctx;
-    node->mesh = xe_rend_mesh_add(QUAD_VERTICES, sizeof(QUAD_VERTICES),
-                                  QUAD_INDICES,  sizeof(QUAD_INDICES));
-
     xe_rend_material material = (xe_rend_material){.model = *tr, .color = LU_VEC(1.0f, 1.0f, 1.0f, 1.0f), .darkcolor = LU_VEC(0.0f, 0.0f, 0.0f, 1.0f), .tex = xe_image_ptr(node->img)->tex, .pma = 0};
-    xe_rend_draw(node->mesh, &material);
+    xe_rend_drawlist_push(QUAD_VERTICES, sizeof(QUAD_VERTICES), QUAD_INDICES, sizeof(QUAD_INDICES), &material);
     return XE_OK;
 }
 
