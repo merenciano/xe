@@ -4,15 +4,12 @@
 
 #include "xe_spine.h"
 
-#include <glad/glad.h>
-#include <GLFW/glfw3.h>
 #include <stb/stb_image.h>
 #include <llulu/lu_time.h>
 #include <llulu/lu_math.h>
 #include <spine/spine.h>
 
 #include <stdbool.h>
-#include <assert.h>
 
 xe_platform *plat = NULL;
 
@@ -96,7 +93,7 @@ int main(int argc, char **argv)
             .pos_z = -20.0f,
             .scale = 6.0f - i
         };
-        nodes[i] = xe_scene_create_drawable(&desc, tex_test[i], (xe_rend_mesh){});
+        nodes[i] = xe_scene_create_drawable(&desc, tex_test[i]);
     }
 
 

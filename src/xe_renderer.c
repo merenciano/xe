@@ -26,6 +26,12 @@ enum {
     XE_MAX_SYNC_TIMEOUT_NANOSEC = 50000000
 };
 
+typedef struct xe_rend_mesh {
+    int base_vtx;
+    int first_idx;
+    int idx_count;
+} xe_rend_mesh;
+
 typedef struct xe_shader_shape_data {
     lu_mat4 model;
     lu_vec4 color; // TODO: Remove since it's in the vertex already

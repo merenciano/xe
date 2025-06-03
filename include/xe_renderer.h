@@ -56,15 +56,9 @@ typedef struct xe_rend_vtx {
     uint32_t color;
 } xe_rend_vtx;
 
-typedef struct xe_rend_mesh {
-    int base_vtx;
-    int first_idx;
-    int idx_count;
-} xe_rend_mesh;
-
 typedef struct xe_rend_material {
     lu_mat4 model;
-    lu_vec4 color;
+    lu_vec4 color; // TODO: Remove since it's in the vertex already
     lu_vec4 darkcolor;
     xe_rend_tex tex;
     float pma;

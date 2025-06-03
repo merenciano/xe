@@ -39,7 +39,6 @@ struct xe_graph_node {
 struct xe_graph_drawable {
     xe_scene_node node;
     xe_image img;
-    xe_rend_mesh mesh;
 };
 
 static struct xe_graph_node g_nodes[XE_SCENE_CAP];
@@ -94,13 +93,10 @@ int xe_drawable_draw(lu_mat4 *tr, void *draw_ctx)
     return XE_OK;
 }
 
-xe_scene_node xe_scene_create_drawable(xe_scene_node_desc *desc, xe_image img, xe_rend_mesh mesh)
+xe_scene_node xe_scene_create_drawable(xe_scene_node_desc *desc, xe_image img)
 {
     struct xe_graph_drawable *node = &g_drawables[g_drawable_count++];
     node->img = img;
-    node->mesh = mesh;
-    desc->draw_fn = xe_drawable_draw;
-    desc->draw_ctx = node;
     node->node = xe_scene_create_node(desc);
     return node->node;
 }

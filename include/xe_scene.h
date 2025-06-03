@@ -29,9 +29,6 @@ typedef struct xe_scene_node_desc {
     float pos_y;
     float pos_z;
     float scale;
-
-    int (*draw_fn)(lu_mat4 *tr, void *ctx);
-    void *draw_ctx;
 } xe_scene_node_desc;
 
 xe_scene_node xe_scene_create_node(xe_scene_node_desc *desc);
@@ -59,7 +56,7 @@ const float *xe_transform_set_rotation_y(xe_scene_node node, float rad);
 const float *xe_transform_set_rotation_z(xe_scene_node node, float rad);
 
 /* API Shape component */
-xe_scene_node xe_scene_create_drawable(xe_scene_node_desc *desc, xe_image img, xe_rend_mesh mesh);
+xe_scene_node xe_scene_create_drawable(xe_scene_node_desc *desc, xe_image img);
 void xe_scene_update_world(void);
 
 // API MOCK

@@ -364,8 +364,6 @@ xe_spine_create(const char *atlas, const char *skel_json, float scale, const cha
         .pos_y = 0.0f,
         .pos_z = -20.0f,
         .scale = 1.0f,
-        .draw_fn = xe_spine_draw,
-        .draw_ctx = sp,
     };
 
     sp->node = xe_scene_create_node(&desc);
