@@ -426,27 +426,27 @@ xe_rend_mesh_add(const void *vert, size_t vert_size, const void *indices, size_t
     return mesh;
 }
 
-xe_rend_draw_id
-xe_rend_material_add(xe_rend_material mat)
+static inline xe_rend_draw_id
+xe_rend_material_add(const xe_rend_material *mat)
 {
 #ifdef XE_DEBUG
     xe_rend_sync();
 #endif
     assert(((g_r.uniforms.head - sizeof(xe_shader_data) * g_r.phase - offsetof(xe_shader_data, data)) % sizeof(xe_shader_shape_data)) == 0);
     xe_shader_shape_data *uniform = (void*)((char*)g_r.uniforms.data + g_r.uniforms.head);
-    uniform->model = mat.model;
-    uniform->color = mat.color;
-    uniform->darkcolor = mat.darkcolor;
-    uniform->albedo_idx = mat.tex.idx;
-    uniform->albedo_layer = (float)mat.tex.layer;
-    uniform->pma = mat.pma;
+    uniform->model = mat->model;
+    uniform->color = mat->color;
+    uniform->darkcolor = mat->darkcolor;
+    uniform->albedo_idx = mat->tex.idx;
+    uniform->albedo_layer = (float)mat->tex.layer;
+    uniform->pma = mat->pma;
 
     int idx = (g_r.uniforms.head - g_r.phase * sizeof(xe_shader_data) - offsetof(xe_shader_data, data)) / sizeof(xe_shader_shape_data);
     g_r.uniforms.head += sizeof(xe_shader_shape_data);
     return idx;
 }
 
-void
+static inline void
 xe_rend_submit(xe_rend_mesh mesh, xe_rend_draw_id drawidx)
 {
 #ifdef XE_DEBUG
@@ -463,6 +463,13 @@ xe_rend_submit(xe_rend_mesh mesh, xe_rend_draw_id drawidx)
         .draw_index = drawidx 
     };
     g_r.drawlist.head += sizeof(xe_drawcmd);
+}
+
+void
+xe_rend_draw(xe_rend_mesh mesh, xe_rend_material *material)
+{
+    int draw_id = xe_rend_material_add(material);
+    xe_rend_submit(mesh, draw_id);
 }
 
 void xe_rend_render(void)

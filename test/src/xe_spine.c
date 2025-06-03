@@ -221,15 +221,13 @@ xe_spine_draw(lu_mat4 *tr, void *draw_ctx)
             (current_batch.vtx_count && (memcmp(&current_batch.material.darkcolor, &dark_color, sizeof(dark_color))))) {
             xe_rend_mesh mesh = xe_rend_mesh_add(current_batch.vert, current_batch.vtx_count * sizeof(xe_rend_vtx),
                                                  current_batch.indices, current_batch.idx_count * sizeof(xe_rend_idx));
-            xe_rend_draw_id draw = xe_rend_material_add(current_batch.material);
-            xe_rend_submit(mesh, draw);
+            xe_rend_draw(mesh, &current_batch.material);
             current_batch.idx_count = 0;
             current_batch.vtx_count = 0;
         }
 
         current_batch.material.darkcolor = dark_color;
         memcpy(&current_batch.vert[current_batch.vtx_count], vertices, slot_vtx_count * sizeof(xe_rend_vtx));
-        //memcpy(&current_batch.indices[current_batch.idx_count], indices, slot_idx_count * sizeof(xe_rend_idx));
         for (int i = 0; i < slot_idx_count; ++i) {
             current_batch.indices[current_batch.idx_count + i] = indices[i] + current_batch.vtx_count;
         }
@@ -247,13 +245,23 @@ xe_spine_draw(lu_mat4 *tr, void *draw_ctx)
     if (current_batch.vtx_count) {
         xe_rend_mesh mesh = xe_rend_mesh_add(current_batch.vert, current_batch.vtx_count * sizeof(xe_rend_vtx),
                                                 current_batch.indices, current_batch.idx_count * sizeof(xe_rend_idx));
-        xe_rend_draw_id draw = xe_rend_material_add(current_batch.material);
-        xe_rend_submit(mesh, draw);
+
+        xe_rend_draw(mesh, &current_batch.material);
         current_batch.idx_count = 0;
         current_batch.vtx_count = 0;
     }
 
     return XE_OK;
+}
+
+void
+xe_spine_draw_pass(void)
+{
+    for (int i = 0; i < XE_MAX_SPINES; ++i) {
+        if (g_spines[i].res.state == XE_RS_COMMITED) {
+            xe_spine_draw((lu_mat4*)xe_transform_get_global(g_spines[i].node), &g_spines[i]);
+        }
+    }
 }
 
 static void

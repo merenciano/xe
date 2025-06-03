@@ -82,8 +82,7 @@ bool xe_rend_init(xe_rend_config *config);
 xe_rend_tex xe_rend_tex_alloc(xe_rend_texfmt format);
 void xe_rend_tex_set(xe_rend_tex tex, void *data);
 xe_rend_mesh xe_rend_mesh_add(const void *vert, size_t vert_size, const void *indices, size_t indices_size);
-xe_rend_draw_id xe_rend_material_add(xe_rend_material mat);
-void xe_rend_submit(xe_rend_mesh mesh, xe_rend_draw_id drawidx);
+void xe_rend_draw(xe_rend_mesh mesh, xe_rend_material *material);
 void xe_rend_render();
 
 /* This function should be called on each frame before writing data to any persistent coherent buffer. */

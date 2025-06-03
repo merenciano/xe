@@ -30,6 +30,6 @@ void *xe_spine_get_anim(xe_scene_node node);
 xe_scene_node xe_spine_create(const char *atlas, const char *skeleton, float scale, const char *idle_ani);
 //xe_spine xe_spine_load(const char *atlas, const char *skeleton, float scale, const char *idle_ani);
 void xe_spine_animation_pass(float delta_time);
-void xe_spine_draw_pass();
+void xe_spine_draw_pass(void);
 
 #endif  /* __XE_SPINE_H__ */

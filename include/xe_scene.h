@@ -45,6 +45,7 @@ float *xe_scene_tr_init(xe_scene_node node, float px, float py, float pz, float 
  * not only the value but its memory location is likely to change (from other threads).
  */
 const float *xe_transform_get(xe_scene_node node);
+const float *xe_transform_get_global(xe_scene_node node);
 void xe_transform_set(xe_scene_node node, const float *mat);
 /* Transformations, *not* assignments */
 const float *xe_transform_scale(xe_scene_node node, float k); /* uniform scalation in all axis */
@@ -59,7 +60,7 @@ const float *xe_transform_set_rotation_z(xe_scene_node node, float rad);
 
 /* API Shape component */
 xe_scene_node xe_scene_create_drawable(xe_scene_node_desc *desc, xe_image img, xe_rend_mesh mesh);
-void xe_scene_draw(void);
+void xe_scene_update_world(void);
 
 // API MOCK
 enum {

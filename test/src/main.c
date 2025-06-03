@@ -117,7 +117,8 @@ int main(int argc, char **argv)
         /* Systems */
         xe_spine_animation_pass(deltasec);
         xe_rend_sync();
-        xe_scene_draw();
+        xe_scene_update_world();
+        xe_spine_draw_pass();
 
         deltasec = xe_platform_update();
     }

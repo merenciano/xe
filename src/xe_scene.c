@@ -92,10 +92,10 @@ int xe_drawable_draw(lu_mat4 *tr, void *draw_ctx)
     }
     struct xe_graph_drawable *node = draw_ctx;
     node->mesh = xe_rend_mesh_add(QUAD_VERTICES, sizeof(QUAD_VERTICES),
-                                        QUAD_INDICES,  sizeof(QUAD_INDICES));
+                                  QUAD_INDICES,  sizeof(QUAD_INDICES));
 
-    int draw_id = xe_rend_material_add((xe_rend_material){.model = *tr, .color = LU_VEC(1.0f, 1.0f, 1.0f, 1.0f), .darkcolor = LU_VEC(0.0f, 0.0f, 0.0f, 1.0f), .tex = xe_image_ptr(node->img)->tex, .pma = 0});
-    xe_rend_submit(node->mesh, draw_id);
+    xe_rend_material material = (xe_rend_material){.model = *tr, .color = LU_VEC(1.0f, 1.0f, 1.0f, 1.0f), .darkcolor = LU_VEC(0.0f, 0.0f, 0.0f, 1.0f), .tex = xe_image_ptr(node->img)->tex, .pma = 0};
+    xe_rend_draw(node->mesh, &material);
     return XE_OK;
 }
 
@@ -224,8 +224,11 @@ static inline bool
 xe_scene_pop_state(xe_scene_iter_stack_t* stack)
 {
     xe_assert(stack);
-    xe_assert(stack->count > 1);
-    return --stack->count > 1;
+    if (--stack->count < 1) {
+        stack->count = 1;
+    }
+
+    return stack->count > 1;
 }
 
 static inline void
@@ -244,14 +247,8 @@ xe_scene_step_state(xe_scene_iter_stack_t* stack)
     return --stack->buf[stack->count - 1].remaining_children;
 }
 
-struct xe_draw_task {
-    lu_mat4 model;
-    int (*func)(lu_mat4 *, void *);
-    void *ctx;
-};
-
 void
-xe_scene_draw(void)
+xe_scene_update_world(void)
 {
     static const lu_mat4 IDENTITY_MAT4 = {.m = {
         1.0f, 0.0f, 0.0f, 0.0f,
@@ -259,11 +256,6 @@ xe_scene_draw(void)
         0.0f, 0.0f, 1.0f, 0.0f,
         0.0f, 0.0f, 0.0f, 1.0f }};
 
-    #if 0
-    static struct xe_draw_task draws[XE_CFG_MAX_ENTITIES];
-    static const struct xe_draw_task *DRAWS_END_IT = draws + XE_CFG_MAX_ENTITIES;
-    struct xe_draw_task *dt_wit = draws; /* draw task write iterator */
-    #endif
     xe_scene_iter_stack_t state = {
         .buf = {{
             .remaining_children = g_node_count,
@@ -278,32 +270,16 @@ xe_scene_draw(void)
         float *global_tr = global_transforms[node->transform_index].m;
         float *local_tr = g_transforms[node->transform_index].m;
         lu_mat4_multiply(global_tr, curr->parent_global_transform, local_tr);
-        #if 0
-        if (node->res.vt.draw) {
-            assert(dt_wit < DRAWS_END_IT);
-            dt_wit->func = node->res.vt.draw;
-            dt_wit->ctx = node->res.vt.draw_ctx;
-            lu_mat4_multiply(dt_wit->model.m, curr->trw.m, g_transforms[node->transform_index].m);
-            ++dt_wit;
-        }
-            #endif
 
         if (node->child_count > 0) {
             xe_scene_push_state(&state, i, global_tr);
         } else {
             if (!xe_scene_step_state(&state)) {
                 if (!xe_scene_pop_state(&state)) {
-                    assert((i + 1) == XE_SCENE_CAP && "The scene graph only has one root node, so the current has to "
-                                                    "be the last one of the vector.");
+                    assert((i + 1) == g_node_count && "The scene graph only has one root node, so the current has to be the last one of the vector.");
                     break;
                 }
             }
         }
     }
-
-    #if 0
-    for (struct xe_draw_task *task = draws; task < dt_wit; ++task) {
-        task->func(&task->model, task->ctx);
-    }
-        #endif
 }
