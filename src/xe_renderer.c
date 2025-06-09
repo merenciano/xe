@@ -10,6 +10,16 @@
 #include <stdint.h>
 #include <stdio.h>
 
+/*
+    TODO:
+        - Shader loading without freads (pointer to source in params), remove include stdio
+        - Shader check reload out of this file, move to asset management system
+        - Pipelines: Shader stages, render config and framebuffer. For skybox, post-process, shadowmaps, etc.
+        - SPIR-V support
+
+
+ */
+
 /* provisional */
 #define XE_SHADER_SRC_FILE_CHECK_INTERVAL_S 5
 
@@ -169,40 +179,21 @@ xe_rend_sync(void)
     }
 }
 
-void
-xe_shader_gpu_setup(void)
+static void
+xe_rend_shader_load_src(const char *vert_src, int vert_len, const char *frag_src, int frag_len)
 {
-    float view[16];
-    float proj[16];
-    lu_mat4_look_at(view, (float[]){0.0f, 0.0f, 2.0f}, (float[]){0.0f, 0.0f, 0.0f}, (float[]){0.0f, 1.0f, 0.0f});
-    lu_mat4_perspective_fov(proj, lu_radians(70.0f), (float)g_r.pipeline.target.w, (float)g_r.pipeline.target.h, 0.1f, 300.0f);
-    lu_mat4_multiply(g_r.view_proj.m, proj, view);
-
-    g_r.pipeline.shader.program_id = glCreateProgram();
-    xe_rend_shader_load();
-}
-
-void
-xe_rend_shader_load(void)
-{
-    char src_buf[XE_MAX_SHADER_SOURCE_LEN];
-    const GLchar *src1 = &src_buf[0];
-    const GLchar *const *src2 = &src1;
-    // Vert
-    FILE *f = fopen(g_r.pipeline.shader.vert_path, "r");
-    if (!f) {
-        printf("Could not open shader source %s.\n", g_r.pipeline.shader.vert_path);
-        return;
-    }
-    size_t len = fread(&src_buf[0], 1, XE_MAX_SHADER_SOURCE_LEN- 1, f);
-    src_buf[len] = '\0'; // TODO: pass len to glShaderSource instead of this (remove the '- 1' in the fread too).
-    fclose(f);
-    xe_assert(len < XE_MAX_SHADER_SOURCE_LEN);
+    // TODO: Clean the code related to this src variables.
+    const GLchar *vert_src1 = &vert_src[0];
+    const GLchar *const *vert_src2 = &vert_src1;
+    const GLchar *frag_src1 = &frag_src[0];
+    const GLchar *const *frag_src2 = &frag_src1;
 
     GLchar out_log[XE_MAX_ERROR_MSG_LEN];
     GLint err;
+
+    // Vert
     GLuint vert_id = glCreateShader(GL_VERTEX_SHADER);
-    glShaderSource(vert_id, 1, src2, NULL);
+    glShaderSource(vert_id, 1, vert_src2, &vert_len);
     glCompileShader(vert_id);
     glGetShaderiv(vert_id, GL_COMPILE_STATUS, &err);
     if (!err) {
@@ -214,18 +205,8 @@ xe_rend_shader_load(void)
     glAttachShader(g_r.pipeline.shader.program_id, vert_id);
 
     // Frag
-    f = fopen(g_r.pipeline.shader.frag_path, "r");
-    if (!f) {
-        printf("Could not open shader source %s.\n", g_r.pipeline.shader.frag_path);
-        return;
-    }
-    len = fread(&src_buf[0], 1, XE_MAX_SHADER_SOURCE_LEN - 1, f);
-    src_buf[len] = '\0';
-    fclose(f);
-    assert(len < XE_MAX_SHADER_SOURCE_LEN);
-
     GLuint frag_id = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(frag_id, 1, src2, NULL); // see comment in the vertex shader
+    glShaderSource(frag_id, 1, frag_src2, &frag_len); // see comment in the vertex shader
     glCompileShader(frag_id);
     glGetShaderiv(frag_id, GL_COMPILE_STATUS, &err);
     if (!err) {
@@ -253,6 +234,52 @@ xe_rend_shader_load(void)
     glDeleteShader(frag_id);
 }
 
+// TODO: Move this function to asset management. This translation unit should not interact with OS files.
+static void
+xe_rend_shader_load_path(const char *vert_path, const char *frag_path)
+{
+    char vert_buf[XE_MAX_SHADER_SOURCE_LEN];
+    char frag_buf[XE_MAX_SHADER_SOURCE_LEN];
+
+    // Vert
+    FILE *f = fopen(vert_path, "r");
+    if (!f) {
+        printf("Could not open shader source %s.\n", g_r.pipeline.shader.vert_path);
+        return;
+    }
+    size_t vert_len = fread(&vert_buf[0], 1, XE_MAX_SHADER_SOURCE_LEN - 1, f);
+    vert_buf[vert_len] = '\0'; // TODO: pass len to glShaderSource instead of this (remove the '- 1' in the fread too).
+    fclose(f);
+    xe_assert(vert_len < XE_MAX_SHADER_SOURCE_LEN);
+
+    // Frag
+    f = fopen(frag_path, "r");
+    if (!f) {
+        printf("Could not open shader source %s.\n", g_r.pipeline.shader.frag_path);
+        return;
+    }
+    size_t frag_len = fread(&frag_buf[0], 1, XE_MAX_SHADER_SOURCE_LEN - 1, f);
+    frag_buf[frag_len] = '\0';
+    fclose(f);
+    assert(frag_len < XE_MAX_SHADER_SOURCE_LEN);
+
+    xe_rend_shader_load_src(vert_buf, vert_len, frag_buf, frag_len);
+}
+
+void
+xe_shader_gpu_setup(void)
+{
+    float view[16];
+    float proj[16];
+    lu_mat4_look_at(view, (float[]){0.0f, 0.0f, 2.0f}, (float[]){0.0f, 0.0f, 0.0f}, (float[]){0.0f, 1.0f, 0.0f});
+    lu_mat4_perspective_fov(proj, lu_radians(70.0f), (float)g_r.pipeline.target.w, (float)g_r.pipeline.target.h, 0.1f, 300.0f);
+    lu_mat4_multiply(g_r.view_proj.m, proj, view);
+
+    g_r.pipeline.shader.program_id = glCreateProgram();
+    xe_rend_shader_load_path(g_r.pipeline.shader.vert_path, g_r.pipeline.shader.frag_path);
+}
+
+#if 0
 static void
 xe_shader_check_reload(void)
 {
@@ -288,6 +315,7 @@ xe_shader_check_reload(void)
         }
     }
 }
+#endif
 
 xe_rend_tex
 xe_rend_tex_alloc(xe_rend_texfmt fmt)
@@ -377,7 +405,7 @@ xe_rend_init(xe_rend_config *cfg)
     g_r.drawlist.data = glMapNamedBufferRange(g_r.drawlist.id, 0, XE_DRAW_INDIRECT_MAP_SIZE, XE_VBUF_MAP_FLAGS);
 
     xe_shader_gpu_setup();
-    
+
     /* Meshes */
     glCreateVertexArrays(1, &g_r.pipeline.shader.vao_id);
     GLuint id = g_r.pipeline.shader.vao_id;
@@ -487,10 +515,9 @@ xe_rend_drawlist_push(const void *vert, size_t vert_size, const void *indices, s
     xe_rend_submit(mesh, draw_id);
 }
 
-void xe_rend_render(void)
+void
+xe_rend_render(void)
 {
-    xe_shader_check_reload(); // TODO: async
-
     {
         static int last_w, last_h;
         if (last_w != g_r.pipeline.target.w || last_h != g_r.pipeline.target.h) {
@@ -522,7 +549,6 @@ void xe_rend_render(void)
 void
 xe_rend_shutdown(void)
 {
-#ifdef XE_CFG_SLOW_AND_UNNECESSARY_SHUTDOWN
     glFlush();
     glDeleteSync(g_r.fence[0]);
     glDeleteSync(g_r.fence[1]);
@@ -536,8 +562,7 @@ xe_rend_shutdown(void)
     glDeleteBuffers(1, &g_r.indices.id);
     glDeleteBuffers(1, &g_r.uniforms.id);
     glDeleteBuffers(1, &g_r.drawlist.id);
-    glDeleteTextures(g_r.tex_count, g_r.tex.id);
+    glDeleteTextures(XE_MAX_TEXTURE_ARRAYS, g_r.tex.id);
     glDeleteProgram(g_r.pipeline.shader.program_id);
     glDeleteVertexArrays(1, &g_r.pipeline.shader.vao_id);
-#endif
 }

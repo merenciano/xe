@@ -22,7 +22,7 @@ typedef struct xe_spine_desc {
 
 } xe_spine_desc;
 
-/* Atlas is the .atlas, not the image. Skeleton can be either jsor or binary
+/* Atlas is the .atlas, not the image. Skeleton can be either json or binary
  * scale and idle_ani are optional (for init purposes)
  */
 void *xe_spine_get_skel(xe_scene_node node);

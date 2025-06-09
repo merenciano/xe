@@ -69,12 +69,11 @@ bool xe_rend_init(xe_rend_config *config);
 /* This function should be called on each frame before writing data to any persistent coherent buffer. */
 void xe_rend_sync(void);
 
-/* Does nothing unless XE_CFG_SLOW_AND_UNNECESSARY_SHUTDOWN is defined. */
+/* Flushes, unmaps and deletes gpu resources. It is up to the programmer to call or skip this function. */
 void xe_rend_shutdown(void);
 
 xe_rend_tex xe_rend_tex_alloc(xe_rend_texfmt format);
 void xe_rend_tex_load(xe_rend_tex tex, void *data);
-void xe_rend_shader_load(void);
 
 void xe_rend_drawlist_push(const void *vert, size_t vert_size, const void *indices, size_t indices_size, xe_rend_material *material);
 void xe_rend_render();
