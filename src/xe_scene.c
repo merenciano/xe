@@ -1,292 +1,276 @@
+#include "scene.h"
 #include "xe_scene.h"
+#include "xe_renderer.h"
 #include "xe_platform.h"
 
-#include <spine/spine.h>
-#include <spine/extension.h>
+#include <llulu/lu_defs.h>
+#include <llulu/lu_math.h>
+#include <llulu/lu_str.h>
 
-void xe_scene_spine_update(xe_scene_spine *self, float delta_sec)
-{
-    spAnimationState_update(self->anim, delta_sec);
-	spAnimationState_apply(self->anim, self->skel);
-	spSkeleton_update(self->skel, delta_sec);
-	spSkeleton_updateWorldTransform(self->skel, SP_PHYSICS_UPDATE);
-}
+#include <string.h>
 
-void xe_scene_spine_draw(xe_scene_spine *self)
-{
-    static spSkeletonClipping *g_clipper = NULL;
-	if (!g_clipper) {
-		g_clipper = spSkeletonClipping_create();
-	}
-
-    xe_rend_vtx vertbuf[2048];
-    xe_rend_idx indibuf[2048];
-    xe_rend_vtx *vertices = vertbuf;
-    xe_rend_idx *indices = indibuf;
-    int slot_idx_count = 0;
-    int slot_vtx_count = 0;
-    float *uv = NULL;
-	spSkeleton *sk = self->skel;
-	for (int i = 0; i < sk->slotsCount; ++i) {
-		spSlot *slot = sk->drawOrder[i];
-		spAttachment *attachment = slot->attachment;
-		if (!attachment) {
-			spSkeletonClipping_clipEnd(g_clipper, slot);
-			continue;
-		}
-
-		if (slot->color.a == 0 || !slot->bone->active) {
-			spSkeletonClipping_clipEnd(g_clipper, slot);
-			continue;
-		}
-
-		spColor *attach_color = NULL;
-
-		if (attachment->type == SP_ATTACHMENT_REGION) {
-			spRegionAttachment *region = (spRegionAttachment *)attachment;
-			attach_color = &region->color;
-
-			if (attach_color->a == 0) {
-				spSkeletonClipping_clipEnd(g_clipper, slot);
-				continue;
-			}
-
-            indibuf[0] = 0;
-            indibuf[1] = 1;
-            indibuf[2] = 2;
-            indibuf[3] = 2;
-            indibuf[4] = 3;
-            indibuf[5] = 0;
-            slot_idx_count = 6;
-			slot_vtx_count = 4;
-			spRegionAttachment_computeWorldVertices(region, slot, (float*)vertices, 0, sizeof(xe_rend_vtx) / sizeof(float));
-            uv = region->uvs;
-			self->node.tex = ((xe_rend_img *) (((spAtlasRegion *) region->rendererObject)->page->rendererObject))->tex;
-		} else if (attachment->type == SP_ATTACHMENT_MESH) {
-			spMeshAttachment *mesh = (spMeshAttachment *) attachment;
-			attach_color = &mesh->color;
-
-			// Early out if the slot color is 0
-			if (attach_color->a == 0) {
-				spSkeletonClipping_clipEnd(g_clipper, slot);
-				continue;
-			}
-
-            slot_vtx_count = mesh->super.worldVerticesLength / 2;
-			spVertexAttachment_computeWorldVertices(SUPER(mesh), slot, 0, slot_vtx_count * 2, (float*)vertices, 0, sizeof(xe_rend_vtx) / sizeof(float));
-            uv = mesh->uvs;
-            memcpy(indices, mesh->triangles, mesh->trianglesCount * sizeof(*indices));
-            slot_idx_count = mesh->trianglesCount;
-			self->node.tex = ((xe_rend_img *) (((spAtlasRegion *) mesh->rendererObject)->page->rendererObject))->tex;
-		} else if (attachment->type == SP_ATTACHMENT_CLIPPING) {
-			spClippingAttachment *clip = (spClippingAttachment *) slot->attachment;
-			spSkeletonClipping_clipStart(g_clipper, slot, clip);
-			continue;
-		} else {
-			continue;
-        }
-
-        uint32_t color = (uint8_t)(sk->color.r * slot->color.r * attach_color->r * 255);
-        color |= ((uint8_t)(sk->color.g * slot->color.g * attach_color->g * 255) << 8);
-        color |= ((uint8_t)(sk->color.b * slot->color.b * attach_color->b * 255) << 16);
-        color |= ((uint8_t)(sk->color.a * slot->color.a * attach_color->a * 255) << 24);
-
-        for (int v = 0; v < slot_vtx_count; ++v) {
-            vertices[v].u = *uv++;
-            vertices[v].v = *uv++;
-            vertices[v].color = color;
-        }
-
-		if (spSkeletonClipping_isClipping(g_clipper)) {
-            // TODO: Optimize but first try with spine-cpp-lite compiled as .so for C
-            spSkeletonClipping_clipTriangles(g_clipper, (float*)vertices, slot_vtx_count * 2, indices, slot_idx_count, &vertices->u, sizeof(*vertices));
-            slot_vtx_count = g_clipper->clippedVertices->size >> 1;
-            xe_rend_vtx *vtxit = vertices;
-            float *xyit = g_clipper->clippedVertices->items;
-            float *uvit = g_clipper->clippedUVs->items;
-            for (int j = 0; j < slot_vtx_count; ++j) {
-                vtxit->x = *xyit++;
-                vtxit->u = *uvit++;
-                vtxit->y = *xyit++;
-                (vtxit++)->v = *uvit++;
-            }
-            slot_idx_count = g_clipper->clippedTriangles->size;
-            memcpy(indices, g_clipper->clippedTriangles->items, slot_idx_count * sizeof(*indices));
-		}
-
-        xe_rend_mesh mesh = xe_rend_mesh_add(vertices, slot_vtx_count * sizeof(xe_rend_vtx), indices, slot_idx_count * sizeof(xe_rend_idx));
-        xe_rend_draw_id di = xe_rend_material_add((xe_rend_material){
-            .apx = self->node.pos_x, .apy = self->node.pos_y,
-            .asx = self->node.scale_x, .asy = self->node.scale_y,
-            .arot = self->node.rotation, .tex = self->node.tex
-        });
-
-
-        switch (slot->data->blendMode) {
-            case SP_BLEND_MODE_NORMAL:
-                xe_rend_submit(mesh, di);
-                break;
-            case SP_BLEND_MODE_MULTIPLY:
-            	XE_LOG_VERBOSE("Multiply alpha blending not implemented.");
-                xe_assert(0);
-                break;
-            case SP_BLEND_MODE_ADDITIVE:
-            	XE_LOG_VERBOSE("Additive alpha blending not implemented.");
-                xe_assert(0);
-                break;
-            case SP_BLEND_MODE_SCREEN:
-            	XE_LOG_VERBOSE("Screen alpha blending not implemented.");
-                xe_assert(0);
-                break;
-        };
-
-        vertices = vertbuf;
-        indices = indibuf;
-        slot_vtx_count = 0;
-        slot_idx_count = 0;
-
-		spSkeletonClipping_clipEnd(g_clipper, slot);
-	}
-	spSkeletonClipping_clipEnd2(g_clipper);
-}
-
-void _spAtlasPage_createTexture(spAtlasPage *self, const char *path)
-{
-    (void)path;
-    xe_assert(self->atlas->rendererObject);
-    self->rendererObject = self->atlas->rendererObject;
-    XE_LOG_VERBOSE("Spine atlas: %s", ((xe_rend_img*)self->rendererObject)->path);
-}
-
-void _spAtlasPage_disposeTexture(spAtlasPage *self)
-{
-    (void)self;
-}
-
-char *_spUtil_readFile(const char *path, int *length)
-{
-    return _spReadFile(path, length);
-}
-
-#if 0
-#define XE_SCENE_ITER_STACK_CAP 64
-
-const xe_image_desc g_images[] = {
-    { .id = {"owl"}, .img_path = "./assets/owl.png"},
-    { .id = {"default"}, .img_path = "./assets/default_tex.png"},
-    { .id = {"test"}, .img_path = "./assets/tex_test.png"},
+static const xe_rend_vtx QUAD_VERTICES[] = {
+    { .x = -1.0f, .y = -1.0f,
+      .u = 0.0f, .v = 0.0f,
+      .color = 0xFFFFFFFF },
+    { .x = -1.0f, .y = 1.0f,
+      .u = 0.0f, .v = 1.0f,
+      .color = 0xFFFFFFFF },
+    { .x = 1.0f, .y = 1.0f,
+      .u = 1.0f, .v = 1.0f,
+      .color = 0xFFFFFFFF },
+    { .x = 1.0f, .y = -1.0f,
+      .u = 1.0f, .v = 0.0f,
+      .color = 0xFFFFFFFF }
 };
 
-const xe_shader_desc g_shaders[] = {
-    { .id = {"generic"}, .vert_path = "./assets/vert.glsl", .frag_path = "./assets/frag.glsl" },
-};
-
-const xe_spine_desc g_spines[] = {
-    { .id = {"owl"}, .atlas_path = "./assets/owl.atlas", .skeleton_path = "./assets/owl-pro.json" },
-};
-
-const xe_scenenode_desc g_nodes[] = {
-    { 
-        .pos_x = 0.0f, .pos_y = 0.0f, .scale_x = 1.0f, .scale_y = 1.0f, .rotation = 0.0f,
-        .type = XE_NODE_SKELETON, .asset_id = {"owl"}, .child_count = 0
-    }
-};
+static const xe_rend_idx QUAD_INDICES[] = { 0, 1, 2, 0, 2, 3 };
 
 enum {
-    XE_ASSETS_IMG_COUNT = sizeof(g_images) / sizeof(g_images[0]),
-    XE_ASSETS_SHADER_COUNT = sizeof(g_shaders) / sizeof(g_shaders[0]),
-    XE_ASSETS_SPINE_COUNT = sizeof(g_spines) / sizeof(g_spines[0]),
-    XE_SCENE_NODE_COUNT = sizeof(g_nodes) / sizeof(g_nodes[0])
+    XE_SCENE_CAP = 64,
 };
+
+struct xe_graph_node {
+    struct xe_resource res;
+    int transform_index;
+    int child_count;
+};
+
+struct xe_graph_drawable {
+    xe_scene_node node;
+    xe_image img;
+};
+
+static struct xe_graph_node g_nodes[XE_SCENE_CAP];
+static lu_mat4 g_transforms[XE_SCENE_CAP];
+static lu_mat4 global_transforms[XE_SCENE_CAP];
+static int g_node_count;
+static struct xe_graph_drawable g_drawables[XE_SCENE_CAP];
+static int g_drawable_count;
+
+static inline const struct xe_graph_node *
+get_node(xe_scene_node n)
+{
+    xe_assert(xe_res_index(n.hnd) < g_node_count && "Node index out of range.");
+    return g_nodes + xe_res_index(n.hnd);
+}
+
+static inline lu_mat4 *
+get_tr(xe_scene_node n)
+{
+    xe_assert(get_node(n)->transform_index < g_node_count && "Transform index out of range.");
+    return g_transforms + get_node(n)->transform_index;
+}
+
+static inline lu_mat4 *
+get_global_tr(xe_scene_node n)
+{
+    xe_assert(get_node(n)->transform_index < g_node_count && "Transform index out of range.");
+    return global_transforms + get_node(n)->transform_index;
+}
+
+xe_scene_node xe_scene_create_node(xe_scene_node_desc *desc)
+{
+    int index = g_node_count++;
+    g_nodes[index].child_count = 0;
+    g_nodes[index].transform_index = index;
+    g_nodes[index].res.state = 0;
+    g_nodes[index].res.version++;
+    xe_scene_node node = { .hnd = xe_res_handle_gen(g_nodes[index].res.version, index)};
+    xe_scene_tr_init(node, desc->pos_x, desc->pos_y, desc->pos_z, desc->scale);
+    return node;
+}
+
+int xe_drawable_draw(lu_mat4 *tr, void *draw_ctx)
+{
+    if (!draw_ctx) {
+        XE_LOG_ERR("draw_ctx = NULL, ignoring xe_drawable_draw call.");
+        return XE_ERR_ARG;
+    }
+    struct xe_graph_drawable *node = draw_ctx;
+    xe_rend_material material = (xe_rend_material){.model = *tr, .color = LU_VEC(1.0f, 1.0f, 1.0f, 1.0f), .darkcolor = LU_VEC(0.0f, 0.0f, 0.0f, 1.0f), .tex = xe_image_ptr(node->img)->tex, .pma = 0};
+    xe_rend_drawlist_push(QUAD_VERTICES, sizeof(QUAD_VERTICES), QUAD_INDICES, sizeof(QUAD_INDICES), &material);
+    return XE_OK;
+}
+
+xe_scene_node xe_scene_create_drawable(xe_scene_node_desc *desc, xe_image img)
+{
+    struct xe_graph_drawable *node = &g_drawables[g_drawable_count++];
+    node->img = img;
+    node->node = xe_scene_create_node(desc);
+    return node->node;
+}
+
+float* xe_scene_tr_init(xe_scene_node node, float px, float py, float pz, float scale)
+{
+    float *tr = g_transforms[g_nodes[xe_res_index(node.hnd)].transform_index].m;
+    lu_mat4_identity(tr);
+    lu_mat4_scale(tr, tr, (float[3]) { scale, scale, scale });
+    return lu_mat4_translate(tr, tr, (float[3]) { px, py, pz });
+}
+
+const float *
+xe_transform_get(xe_scene_node node)
+{
+    return get_tr(node)->m;
+}
+
+const float *
+xe_transform_get_global(xe_scene_node node)
+{
+    return get_global_tr(node)->m;
+}
+
+void
+xe_transform_set(xe_scene_node node, const float *mat)
+{
+    memcpy(get_tr(node)->m, mat, sizeof(lu_mat4));
+}
+
+const float *
+xe_transform_translate(xe_scene_node node, float x, float y, float z)
+{
+    float *tr = get_tr(node)->m;
+    return lu_mat4_translate(tr, tr, (float[3]){x, y, z});
+}
+
+const float *
+xe_transform_scale(xe_scene_node node, float k)
+{
+    float *tr = get_tr(node)->m;
+    return lu_mat4_scale(tr, tr, &LU_VEC(k, k, k).x);
+}
+
+const float *
+xe_transform_scale_v(xe_scene_node node, float x_factor, float y_factor, float z_factor)
+{
+    float *tr = get_tr(node)->m;
+    return lu_mat4_scale(tr, tr, &LU_VEC(x_factor, y_factor, z_factor).x);
+
+}
+
+const float *
+xe_transform_set_rotation_x(xe_scene_node node, float rad)
+{
+    float *tr = get_tr(node)->m;
+    return lu_mat4_rotation_x(tr, rad);
+}
+
+const float *
+xe_transform_set_rotation_y(xe_scene_node node, float rad)
+{
+    float *tr = get_tr(node)->m;
+    return lu_mat4_rotation_y(tr, rad);
+}
+
+const float *
+xe_transform_set_rotation_z(xe_scene_node node, float rad)
+{
+    float *tr = get_tr(node)->m;
+    return lu_mat4_rotation_z(tr, rad);
+}
+
+const float *
+xe_transform_set_pos(xe_scene_node node, float x, float y, float z)
+{
+    float *tr = get_tr(node)->m;
+    return lu_mat4_translation(tr, tr, &LU_VEC(x, y, z).x);
+}
+
+const float *
+xe_transform_set_scale(xe_scene_node node, float x, float y, float z)
+{
+    float *tr = get_tr(node)->m;
+    return lu_mat4_scaling(tr, tr, &LU_VEC(x, y, z).x);
+}
+
+const float *
+xe_transform_rotate(xe_scene_node node, lu_vec3 axis, float rad)
+{
+    float *tr = get_tr(node)->m;
+    return lu_mat4_rotation_axis(tr, &axis.x, rad);
+}
 
 typedef struct xe_scene_iter_state_t {
     int remaining_children;
-    int parent_index;
-    float abpx; /* absolute scale, position and rotation values */
-    float abpy;
-    float absx;
-    float absy;
-    float abrot;
+    const float *parent_global_transform;
+    lu_mat4 trw;
 } xe_scene_iter_state_t;
 
 typedef struct xe_scene_iter_stack_t {
-    xe_scene_iter_state_t buf[XE_SCENE_ITER_STACK_CAP];
+    xe_scene_iter_state_t buf[XE_CFG_MAX_SCENE_GRAPH_DEPTH];
     size_t count;
 } xe_scene_iter_stack_t;
 
-static inline const xe_scene_iter_state_t *
-xe_scene_get_state(xe_scene_iter_stack_t *stack)
+static inline const xe_scene_iter_state_t*
+xe_scene_get_state(xe_scene_iter_stack_t* stack)
 {
-    static const xe_scene_iter_state_t EMPTY = { .remaining_children = 0, .parent_index = -1, .abpx = 0.0f, .abpy = 0.0f, .absx = 1.0f, .absy = 1.0f, .abrot = 0.0f };
     if (stack && stack->count > 0) {
         return &stack->buf[stack->count - 1];
     }
-    return &EMPTY;
+    return NULL;
 }
 
 static inline bool
-xe_scene_pop_state(xe_scene_iter_stack_t *stack)
+xe_scene_pop_state(xe_scene_iter_stack_t* stack)
 {
-    assert(stack);
-    assert(stack->count > 0);
-    return stack->count--;
+    xe_assert(stack);
+    if (--stack->count < 1) {
+        stack->count = 1;
+    }
+
+    return stack->count > 1;
 }
 
 static inline void
-xe_scene_push_state(xe_scene_iter_stack_t *stack, int node_idx)
+xe_scene_push_state(xe_scene_iter_stack_t* stack, int node_idx, float *global_tr)
 {
-    const xe_scene_iter_state_t *curr = xe_scene_get_state(stack);
-    const xe_scenenode_desc *node = &g_nodes[node_idx];
+    const struct xe_graph_node* node = &g_nodes[node_idx];
     stack->buf[stack->count].remaining_children = node->child_count;
-    stack->buf[stack->count].parent_index = node_idx;
-    stack->buf[stack->count].abrot = curr->abrot + node->rotation;
-    stack->buf[stack->count].abpx = curr->abpx + node->pos_x;
-    stack->buf[stack->count].abpy = curr->abpy + node->pos_y;
-    stack->buf[stack->count].absx = curr->absx * node->scale_x;
-    stack->buf[stack->count].absy = curr->absy * node->scale_y;
+    stack->buf[stack->count].parent_global_transform = global_tr;
     stack->count++;
-    assert(stack->count < XE_SCENE_ITER_STACK_CAP);
+    assert(stack->count < XE_CFG_MAX_SCENE_GRAPH_DEPTH);
 }
 
 static inline bool
-xe_scene_step_state(xe_scene_iter_stack_t *stack)
+xe_scene_step_state(xe_scene_iter_stack_t* stack)
 {
     return --stack->buf[stack->count - 1].remaining_children;
 }
 
-static inline void
-xe_scene_update(void)
+void
+xe_scene_update_world(void)
 {
-    xe_scene_iter_stack_t state = { .count = 0 };
-    for (int i = 0; i < XE_SCENE_NODE_COUNT; ++i) {
-        if (g_nodes[i].child_count > 0) {
-            xe_scene_push_state(&state, i);
+    static const lu_mat4 IDENTITY_MAT4 = {.m = {
+        1.0f, 0.0f, 0.0f, 0.0f,
+        0.0f, 1.0f, 0.0f, 0.0f,
+        0.0f, 0.0f, 1.0f, 0.0f,
+        0.0f, 0.0f, 0.0f, 1.0f }};
 
-            if (g_nodes[i].type & (XE_NODE_SHAPE | XE_NODE_SKELETON)) {
-                const xe_scene_iter_state_t *curr = xe_scene_get_state(&state);
-                /*
-                xe_gfx_process((xe_drawable_t){
-                    .apx = curr->abpx,
-                    .apy = curr->abpy,
-                    .asx = curr->absx,
-                    .asy = curr->absy,
-                    .arot = curr->abrot,
-                    .id = i
-                });
-                */
-            }
-            continue;
-        }
-        // TODO populate vertex buffer, uniform buffer and multidraw command buffer with the node if it has shape.
+    xe_scene_iter_stack_t state = {
+        .buf = {{
+            .remaining_children = g_node_count,
+            .parent_global_transform = IDENTITY_MAT4.m
+        }},
+        .count = 1
+    };
 
-        // UPDATE NODE
-        if (!xe_scene_step_state(&state)) {
-            if (!xe_scene_pop_state(&state)) {
-                assert((i + 1) == XE_SCENE_NODE_COUNT && "The scene graph only has one root node, so the current has to be the last one of the vector."); 
-                break;
+    for (int i = 0; i < g_node_count; ++i) {
+        struct xe_graph_node *node = g_nodes + i;
+        const xe_scene_iter_state_t* curr = xe_scene_get_state(&state);
+        float *global_tr = global_transforms[node->transform_index].m;
+        float *local_tr = g_transforms[node->transform_index].m;
+        lu_mat4_multiply(global_tr, curr->parent_global_transform, local_tr);
+
+        if (node->child_count > 0) {
+            xe_scene_push_state(&state, i, global_tr);
+        } else {
+            if (!xe_scene_step_state(&state)) {
+                if (!xe_scene_pop_state(&state)) {
+                    assert((i + 1) == g_node_count && "The scene graph only has one root node, so the current has to be the last one of the vector.");
+                    break;
+                }
             }
         }
     }
 }
-
-#endif

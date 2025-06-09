@@ -1,17 +1,18 @@
 #version 460 core
 
-struct ShapeData {
-    vec2 pos;
-    vec2 scale;
-    float angle;
-    int tex_idx;
-    float tex_layer;
-    int pad1;
+struct ShapeData {  
+    mat4 model;
+    vec4 color;
+    vec4 darkcolor;
+    int albedo_idx;
+    float albedo_layer;
+    float pma;
+    float pad1;
 };
 
 layout(std140, binding=0) uniform u_data {
     mat4 vp;
-    ShapeData shape[128];
+    ShapeData shape[256];
 };
 
 layout(binding = 0) uniform sampler2DArray u_textures[16];
@@ -24,6 +25,11 @@ in Vertex {
 
 out vec4 frag_color; 
 
-void main() {
-    frag_color = texture(u_textures[shape[v_in.shape_idx].tex_idx], vec3(v_in.uv, shape[v_in.shape_idx].tex_layer));
+void main()
+{
+    ShapeData mat = shape[v_in.shape_idx];
+    vec4 tex = texture(u_textures[mat.albedo_idx], vec3(v_in.uv, mat.albedo_layer));
+
+    frag_color.a = tex.a * v_in.color.a;
+    frag_color.rgb = ((tex.a - 1.0) * mat.pma + 1.0 - tex.rgb) * mat.darkcolor.rgb + tex.rgb * v_in.color.rgb;
 }
