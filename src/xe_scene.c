@@ -1,6 +1,6 @@
-#include "scene.h"
+#include "xe_scene_internal.h"
 #include "xe_scene.h"
-#include "xe_renderer.h"
+#include "xe_gfx.h"
 #include "xe_platform.h"
 
 #include <llulu/lu_defs.h>
@@ -9,7 +9,29 @@
 
 #include <string.h>
 
-static const xe_rend_vtx QUAD_VERTICES[] = {
+enum {
+    XE_SCENE_CAP = 64,
+    XE_CFG_MAX_SCENE_GRAPH_DEPTH = 64
+};
+
+struct xe_graph_node {
+    struct xe_resource res;
+    int transform_index;
+    int child_count;
+};
+
+struct xe_graph_drawable {
+    xe_scene_node node;
+    xe_image img;
+};
+
+struct xe_scene_node_update {
+    xe_scene_node node;
+    void *user_data;
+    void (*update_fn)(xe_scene_node, void *);
+};
+
+static const xe_gfx_vtx QUAD_VERTICES[] = {
     { .x = -1.0f, .y = -1.0f,
       .u = 0.0f, .v = 0.0f,
       .color = 0xFFFFFFFF },
@@ -24,22 +46,7 @@ static const xe_rend_vtx QUAD_VERTICES[] = {
       .color = 0xFFFFFFFF }
 };
 
-static const xe_rend_idx QUAD_INDICES[] = { 0, 1, 2, 0, 2, 3 };
-
-enum {
-    XE_SCENE_CAP = 64,
-};
-
-struct xe_graph_node {
-    struct xe_resource res;
-    int transform_index;
-    int child_count;
-};
-
-struct xe_graph_drawable {
-    xe_scene_node node;
-    xe_image img;
-};
+static const xe_gfx_idx QUAD_INDICES[] = { 0, 1, 2, 0, 2, 3 };
 
 static struct xe_graph_node g_nodes[XE_SCENE_CAP];
 static lu_mat4 g_transforms[XE_SCENE_CAP];
@@ -47,22 +54,41 @@ static lu_mat4 global_transforms[XE_SCENE_CAP];
 static int g_node_count;
 static struct xe_graph_drawable g_drawables[XE_SCENE_CAP];
 static int g_drawable_count;
+static struct xe_scene_node_update g_updates[XE_SCENE_CAP];
+static int g_update_count;
 
-static inline const struct xe_graph_node *
+void
+xe_scene_register_node_update(xe_scene_node node, void *user_data, void (*update_fn)(xe_scene_node, void *))
+{
+    g_updates[g_update_count].node = node;
+    g_updates[g_update_count].update_fn = update_fn;
+    g_updates[g_update_count].user_data = user_data;
+    g_update_count++;
+}
+
+void
+xe_scene_dispatch_updates(void)
+{
+    for (int i = 0; i < g_update_count; i++) {
+        g_updates[i].update_fn(g_updates[i].node, g_updates[i].user_data);
+    }
+}
+
+static const struct xe_graph_node *
 get_node(xe_scene_node n)
 {
     xe_assert(xe_res_index(n.hnd) < g_node_count && "Node index out of range.");
     return g_nodes + xe_res_index(n.hnd);
 }
 
-static inline lu_mat4 *
+static lu_mat4 *
 get_tr(xe_scene_node n)
 {
     xe_assert(get_node(n)->transform_index < g_node_count && "Transform index out of range.");
     return g_transforms + get_node(n)->transform_index;
 }
 
-static inline lu_mat4 *
+static lu_mat4 *
 get_global_tr(xe_scene_node n)
 {
     xe_assert(get_node(n)->transform_index < g_node_count && "Transform index out of range.");
@@ -81,24 +107,124 @@ xe_scene_node xe_scene_create_node(xe_scene_node_desc *desc)
     return node;
 }
 
-int xe_drawable_draw(lu_mat4 *tr, void *draw_ctx)
+int
+xe_drawable_draw(lu_mat4 *tr, void *draw_ctx)
 {
     if (!draw_ctx) {
         XE_LOG_ERR("draw_ctx = NULL, ignoring xe_drawable_draw call.");
         return XE_ERR_ARG;
     }
     struct xe_graph_drawable *node = draw_ctx;
-    xe_rend_material material = (xe_rend_material){.model = *tr, .color = LU_VEC(1.0f, 1.0f, 1.0f, 1.0f), .darkcolor = LU_VEC(0.0f, 0.0f, 0.0f, 1.0f), .tex = xe_image_ptr(node->img)->tex, .pma = 0};
-    xe_rend_drawlist_push(QUAD_VERTICES, sizeof(QUAD_VERTICES), QUAD_INDICES, sizeof(QUAD_INDICES), &material);
+    xe_gfx_material material = (xe_gfx_material){.model = *tr, .color = LU_VEC(1.0f, 1.0f, 1.0f, 1.0f), .darkcolor = LU_VEC(0.0f, 0.0f, 0.0f, 1.0f), .tex = xe_image_ptr(node->img)->tex, .pma = 0};
+    xe_gfx_push(QUAD_VERTICES, sizeof(QUAD_VERTICES), QUAD_INDICES, sizeof(QUAD_INDICES), &material);
     return XE_OK;
 }
 
-xe_scene_node xe_scene_create_drawable(xe_scene_node_desc *desc, xe_image img)
+void
+xe_scene_drawable_draw_pass(void)
+{
+    int count = g_drawable_count;
+    for (int i = 0; i < count; ++i) {
+        xe_drawable_draw((lu_mat4*)xe_transform_get_global(g_drawables[i].node), &g_drawables[i]);
+
+    }
+}
+
+xe_scene_node
+xe_scene_create_drawable(xe_scene_node_desc *desc, xe_image img)
 {
     struct xe_graph_drawable *node = &g_drawables[g_drawable_count++];
     node->img = img;
     node->node = xe_scene_create_node(desc);
     return node->node;
+}
+
+/* Scene graph iteration state */
+
+typedef struct xe_scene_iter_state_t {
+    int remaining_children;
+    const float *parent_global_transform;
+    lu_mat4 trw;
+} xe_scene_iter_state_t;
+
+typedef struct xe_scene_iter_stack_t {
+    xe_scene_iter_state_t buf[XE_CFG_MAX_SCENE_GRAPH_DEPTH];
+    size_t count;
+} xe_scene_iter_stack_t;
+
+static const xe_scene_iter_state_t*
+xe_scene_get_state(xe_scene_iter_stack_t* stack)
+{
+    if (stack && stack->count > 0) {
+        return &stack->buf[stack->count - 1];
+    }
+    return NULL;
+}
+
+static bool
+xe_scene_pop_state(xe_scene_iter_stack_t* stack)
+{
+    xe_assert(stack);
+    if (--stack->count < 1) {
+        stack->count = 1;
+    }
+
+    return stack->count > 1;
+}
+
+static void
+xe_scene_push_state(xe_scene_iter_stack_t* stack, int node_idx, float *global_tr)
+{
+    const struct xe_graph_node* node = &g_nodes[node_idx];
+    stack->buf[stack->count].remaining_children = node->child_count;
+    stack->buf[stack->count].parent_global_transform = global_tr;
+    stack->count++;
+    assert(stack->count < XE_CFG_MAX_SCENE_GRAPH_DEPTH);
+}
+
+static bool
+xe_scene_step_state(xe_scene_iter_stack_t* stack)
+{
+    return --stack->buf[stack->count - 1].remaining_children;
+}
+
+void
+xe_scene_update_world(void)
+{
+    static const lu_mat4 IDENTITY_MAT4 = {.m = {
+        1.0f, 0.0f, 0.0f, 0.0f,
+        0.0f, 1.0f, 0.0f, 0.0f,
+        0.0f, 0.0f, 1.0f, 0.0f,
+        0.0f, 0.0f, 0.0f, 1.0f }};
+
+    xe_scene_iter_stack_t state = {
+        .buf = {{
+            .remaining_children = g_node_count,
+            .parent_global_transform = IDENTITY_MAT4.m
+        }},
+        .count = 1
+    };
+
+    xe_scene_dispatch_updates();
+
+    for (int i = 0; i < g_node_count; ++i) {
+        struct xe_graph_node *node = g_nodes + i;
+        const xe_scene_iter_state_t* curr = xe_scene_get_state(&state);
+        float *global_tr = global_transforms[node->transform_index].m;
+        float *local_tr = g_transforms[node->transform_index].m;
+        lu_mat4_multiply(global_tr, curr->parent_global_transform, local_tr);
+
+        if (node->child_count > 0) {
+            xe_scene_push_state(&state, i, global_tr);
+        } else {
+            if (!xe_scene_step_state(&state)) {
+                if (!xe_scene_pop_state(&state)) {
+                    assert((i + 1) == g_node_count && "The scene graph only has one root node, so the current has to be the last one of the vector.");
+                    break;
+                }
+            }
+        }
+    }
 }
 
 float* xe_scene_tr_init(xe_scene_node node, float px, float py, float pz, float scale)
@@ -188,89 +314,6 @@ const float *
 xe_transform_rotate(xe_scene_node node, lu_vec3 axis, float rad)
 {
     float *tr = get_tr(node)->m;
-    return lu_mat4_rotation_axis(tr, &axis.x, rad);
-}
-
-typedef struct xe_scene_iter_state_t {
-    int remaining_children;
-    const float *parent_global_transform;
-    lu_mat4 trw;
-} xe_scene_iter_state_t;
-
-typedef struct xe_scene_iter_stack_t {
-    xe_scene_iter_state_t buf[XE_CFG_MAX_SCENE_GRAPH_DEPTH];
-    size_t count;
-} xe_scene_iter_stack_t;
-
-static inline const xe_scene_iter_state_t*
-xe_scene_get_state(xe_scene_iter_stack_t* stack)
-{
-    if (stack && stack->count > 0) {
-        return &stack->buf[stack->count - 1];
-    }
-    return NULL;
-}
-
-static inline bool
-xe_scene_pop_state(xe_scene_iter_stack_t* stack)
-{
-    xe_assert(stack);
-    if (--stack->count < 1) {
-        stack->count = 1;
-    }
-
-    return stack->count > 1;
-}
-
-static inline void
-xe_scene_push_state(xe_scene_iter_stack_t* stack, int node_idx, float *global_tr)
-{
-    const struct xe_graph_node* node = &g_nodes[node_idx];
-    stack->buf[stack->count].remaining_children = node->child_count;
-    stack->buf[stack->count].parent_global_transform = global_tr;
-    stack->count++;
-    assert(stack->count < XE_CFG_MAX_SCENE_GRAPH_DEPTH);
-}
-
-static inline bool
-xe_scene_step_state(xe_scene_iter_stack_t* stack)
-{
-    return --stack->buf[stack->count - 1].remaining_children;
-}
-
-void
-xe_scene_update_world(void)
-{
-    static const lu_mat4 IDENTITY_MAT4 = {.m = {
-        1.0f, 0.0f, 0.0f, 0.0f,
-        0.0f, 1.0f, 0.0f, 0.0f,
-        0.0f, 0.0f, 1.0f, 0.0f,
-        0.0f, 0.0f, 0.0f, 1.0f }};
-
-    xe_scene_iter_stack_t state = {
-        .buf = {{
-            .remaining_children = g_node_count,
-            .parent_global_transform = IDENTITY_MAT4.m
-        }},
-        .count = 1
-    };
-
-    for (int i = 0; i < g_node_count; ++i) {
-        struct xe_graph_node *node = g_nodes + i;
-        const xe_scene_iter_state_t* curr = xe_scene_get_state(&state);
-        float *global_tr = global_transforms[node->transform_index].m;
-        float *local_tr = g_transforms[node->transform_index].m;
-        lu_mat4_multiply(global_tr, curr->parent_global_transform, local_tr);
-
-        if (node->child_count > 0) {
-            xe_scene_push_state(&state, i, global_tr);
-        } else {
-            if (!xe_scene_step_state(&state)) {
-                if (!xe_scene_pop_state(&state)) {
-                    assert((i + 1) == g_node_count && "The scene graph only has one root node, so the current has to be the last one of the vector.");
-                    break;
-                }
-            }
-        }
-    }
+    float mat[16];
+    return lu_mat4_multiply(tr, tr, lu_mat4_rotation_axis(mat, &axis.x, rad));
 }

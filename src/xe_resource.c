@@ -1,5 +1,5 @@
-#include "scene.h"
-#include "xe_renderer.h"
+#include "xe_scene_internal.h"
+#include "xe_gfx.h"
 #include "xe_platform.h"
 
 #include <stb/stb_image.h>
@@ -20,21 +20,23 @@ xe_image_ptr(xe_image img)
     return i < XE_MAX_IMAGES ? &g_res.img[i] : NULL;
 }
 
-xe_rend_tex
+xe_gfx_tex
 xe_image_tex(xe_image image)
 {
     const struct xe_res_image *img = xe_image_ptr(image);
     xe_assert(img);
     if (img->res.version != xe_res_version(image.id)) {
         XE_LOG_ERR("Dangling handle.");
-        return (xe_rend_tex){.idx = -1, .layer = -1};
+        return (xe_gfx_tex){.idx = -1, .layer = -1};
     }
 
     switch (img->res.state) {
         case XE_RS_COMMITED:
             return img->tex;
         case XE_RS_STAGED:
-            xe_rend_tex_load(img->tex, img->data);
+            xe_gfx_tex_load(img->tex, img->data);
+            stbi_image_free(img->data);
+            ((struct xe_res_image*)img)->data = NULL;
             return img->tex;
 
         default:
@@ -42,10 +44,10 @@ xe_image_tex(xe_image image)
             xe_assert(0);
             break;
     }
-    return (xe_rend_tex){.idx = -1, .layer = -1};
+    return (xe_gfx_tex){.idx = -1, .layer = -1};
 }
 
-static inline int
+static int
 xe_pixel_format_from_ch(int ch)
 {
     static const int formats[] = { XE_ERR, XE_TEX_R, XE_TEX_RG, XE_TEX_RGB, XE_TEX_RGBA };
@@ -81,7 +83,7 @@ xe_image_load(const char *path, int tex_flags)
             img->w = w;
             img->h = h;
             img->c = c;
-            img->tex = xe_rend_tex_alloc((xe_rend_texfmt){
+            img->tex = xe_gfx_tex_alloc((xe_gfx_texfmt){
                 .width = img->w,
                 .height = img->h,
                 .format = xe_pixel_format_from_ch(img->c),
@@ -90,7 +92,9 @@ xe_image_load(const char *path, int tex_flags)
             assert(img->tex.idx >= 0);
             img->res.state = XE_RS_STAGED;
 
-            xe_rend_tex_load(img->tex, img->data);
+            xe_gfx_tex_load(img->tex, img->data);
+            stbi_image_free(img->data);
+            img->data = NULL;
             img->res.state = XE_RS_COMMITED;
         }
     }

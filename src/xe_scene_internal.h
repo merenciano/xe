@@ -1,5 +1,5 @@
-#ifndef XE_INTERNAL_SCENE_H
-#define XE_INTERNAL_SCENE_H
+#ifndef __XE_SCENE_INTERNAL_H__
+#define __XE_SCENE_INTERNAL_H__
 
 #include <xe_scene.h>
 
@@ -36,7 +36,7 @@ struct xe_resource {
 
 struct xe_res_image {
     struct xe_resource res;
-    xe_rend_tex tex;
+    xe_gfx_tex tex;
     const char *path;
     void *data;
     uint16_t w;
@@ -45,7 +45,7 @@ struct xe_res_image {
     uint16_t flags;
 };
 
-xe_rend_tex xe_image_tex(xe_image image);
+xe_gfx_tex xe_image_tex(xe_image image);
 const struct xe_res_image *xe_image_ptr(xe_image image);
 
-#endif /* XE_INTERNAL_SCENE_H */
+#endif /* __XE_SCENE_INTERNAL_H__ */

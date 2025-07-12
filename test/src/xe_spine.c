@@ -1,6 +1,6 @@
 #include "xe_spine.h"
-#include "xe_renderer.h"
-#include "../src/scene.h"
+#include "xe_gfx.h"
+#include "../src/xe_scene_internal.h"
 
 #include <xe_platform.h>
 
@@ -73,11 +73,11 @@ xe_spine_get_anim(xe_scene_node node)
  */
 enum { XE_SPBATCH_VTX_CAP = 1024 << 5, XE_SPBATCH_IDX_CAP = 1024 << 6 };
 struct slot_batch {
-    xe_rend_vtx vert[XE_SPBATCH_VTX_CAP];
-    xe_rend_idx indices[XE_SPBATCH_IDX_CAP << 1];
+    xe_gfx_vtx vert[XE_SPBATCH_VTX_CAP];
+    xe_gfx_idx indices[XE_SPBATCH_IDX_CAP << 1];
     int64_t vtx_count;
     int64_t idx_count;
-    xe_rend_material material;
+    xe_gfx_material material;
 };
 
 /* TODO: Go back to colored vertices but keep dark color with the materials, so Additive blend can zero its alpha
@@ -98,10 +98,10 @@ xe_spine_draw(lu_mat4 *tr, void *draw_ctx)
     current_batch.vtx_count = 0;
     current_batch.idx_count = 0;
 
-    xe_rend_vtx vertbuf[2048];
-    xe_rend_idx indibuf[2048];
-    xe_rend_vtx *vertices = vertbuf;
-    xe_rend_idx *indices = indibuf;
+    xe_gfx_vtx vertbuf[2048];
+    xe_gfx_idx indibuf[2048];
+    xe_gfx_vtx *vertices = vertbuf;
+    xe_gfx_idx *indices = indibuf;
     int slot_idx_count = 0;
     int slot_vtx_count = 0;
     float *uv = NULL;
@@ -138,7 +138,7 @@ xe_spine_draw(lu_mat4 *tr, void *draw_ctx)
             indibuf[5] = 0;
             slot_idx_count = 6;
 			slot_vtx_count = 4;
-			spRegionAttachment_computeWorldVertices(region, slot, (float*)vertices, 0, sizeof(xe_rend_vtx) / sizeof(float));
+			spRegionAttachment_computeWorldVertices(region, slot, (float*)vertices, 0, sizeof(xe_gfx_vtx) / sizeof(float));
             uv = region->uvs;
 			const struct xe_res_image *pimg = xe_image_ptr(*((xe_image*)((spAtlasRegion *)region->rendererObject)->page->rendererObject));
             current_batch.material.pma = pimg->flags & XE_IMG_PREMUL_ALPHA;
@@ -154,7 +154,7 @@ xe_spine_draw(lu_mat4 *tr, void *draw_ctx)
 			}
 
             slot_vtx_count = mesh->super.worldVerticesLength / 2;
-			spVertexAttachment_computeWorldVertices(SUPER(mesh), slot, 0, slot_vtx_count * 2, (float*)vertices, 0, sizeof(xe_rend_vtx) / sizeof(float));
+			spVertexAttachment_computeWorldVertices(SUPER(mesh), slot, 0, slot_vtx_count * 2, (float*)vertices, 0, sizeof(xe_gfx_vtx) / sizeof(float));
             uv = mesh->uvs;
             memcpy(indices, mesh->triangles, mesh->trianglesCount * sizeof(*indices));
             slot_idx_count = mesh->trianglesCount;
@@ -186,7 +186,7 @@ xe_spine_draw(lu_mat4 *tr, void *draw_ctx)
             // TODO: Optimize but first try with spine-cpp-lite compiled as .so for C
             spSkeletonClipping_clipTriangles(g_clipper, (float*)vertices, slot_vtx_count * 2, indices, slot_idx_count, &vertices->u, sizeof(*vertices));
             slot_vtx_count = g_clipper->clippedVertices->size >> 1;
-            xe_rend_vtx *vtxit = vertices;
+            xe_gfx_vtx *vtxit = vertices;
             float *xyit = g_clipper->clippedVertices->items;
             float *uvit = g_clipper->clippedUVs->items;
             for (int j = 0; j < slot_vtx_count; ++j) {
@@ -218,14 +218,14 @@ xe_spine_draw(lu_mat4 *tr, void *draw_ctx)
 
         if ((current_batch.vtx_count << 1 > XE_SPBATCH_VTX_CAP) || (current_batch.idx_count << 1 > XE_SPBATCH_IDX_CAP) ||
                 (current_batch.vtx_count && (memcmp(&current_batch.material.darkcolor, &dark_color, sizeof(dark_color))))) {
-            xe_rend_drawlist_push(current_batch.vert, current_batch.vtx_count * sizeof(xe_rend_vtx),
-                current_batch.indices, current_batch.idx_count * sizeof(xe_rend_idx), &current_batch.material);
+            xe_gfx_push(current_batch.vert, current_batch.vtx_count * sizeof(xe_gfx_vtx),
+                current_batch.indices, current_batch.idx_count * sizeof(xe_gfx_idx), &current_batch.material);
             current_batch.idx_count = 0;
             current_batch.vtx_count = 0;
         }
 
         current_batch.material.darkcolor = dark_color;
-        memcpy(&current_batch.vert[current_batch.vtx_count], vertices, slot_vtx_count * sizeof(xe_rend_vtx));
+        memcpy(&current_batch.vert[current_batch.vtx_count], vertices, slot_vtx_count * sizeof(xe_gfx_vtx));
         for (int i = 0; i < slot_idx_count; ++i) {
             current_batch.indices[current_batch.idx_count + i] = indices[i] + current_batch.vtx_count;
         }
@@ -241,8 +241,8 @@ xe_spine_draw(lu_mat4 *tr, void *draw_ctx)
 	spSkeletonClipping_clipEnd2(g_clipper);
 
     if (current_batch.vtx_count) {
-        xe_rend_drawlist_push(current_batch.vert, current_batch.vtx_count * sizeof(xe_rend_vtx),
-            current_batch.indices, current_batch.idx_count * sizeof(xe_rend_idx), &current_batch.material);
+        xe_gfx_push(current_batch.vert, current_batch.vtx_count * sizeof(xe_gfx_vtx),
+            current_batch.indices, current_batch.idx_count * sizeof(xe_gfx_idx), &current_batch.material);
         current_batch.idx_count = 0;
         current_batch.vtx_count = 0;
     }

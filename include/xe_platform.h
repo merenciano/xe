@@ -121,5 +121,6 @@ float xe_platform_update(void);
 void xe_platform_shutdown(void);
 
 int64_t xe_file_mtime(const char *path);
+bool xe_file_read(const char *path, void *buf, size_t bufsize, size_t *out_len);
 
 #endif  /* __XE_PLATFORM_H__ */

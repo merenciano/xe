@@ -1,10 +1,9 @@
 #include "xe_platform.h"
-#include "xe_renderer.h"
+#include "xe_gfx.h"
 #include "xe_scene.h"
 
 #include "xe_spine.h"
 
-#include <stb/stb_image.h>
 #include <llulu/lu_time.h>
 #include <llulu/lu_math.h>
 #include <spine/spine.h>
@@ -50,6 +49,28 @@ static void owl_update(xe_scene_node self, void *ctx)
     spSkeleton_setToSetupPose(xe_spine_get_skel(self));
 }
 
+static void node1_update(xe_scene_node self, void *data)
+{
+    float deltasec = *(float*)data;
+    const float *tr = xe_transform_get(self);
+    float rotation_mat[16];
+    lu_mat4_multiply((float*)tr, lu_mat4_rotation_z(lu_mat4_identity(rotation_mat), deltasec * 0.5f), tr);
+    xe_transform_rotate(self, (lu_vec3){0.0f, 0.0f, 1.0f}, deltasec * 2.0f);
+}
+
+static void node2_update(xe_scene_node self, void *data)
+{
+    xe_transform_rotate(self, (lu_vec3){0.0f, 0.0f, 1.0f}, *(float*)data);
+}
+
+static void node3_update(xe_scene_node self, void *data)
+{
+    (void)data;
+    float curr_time_sec = lu_time_sec(lu_time_elapsed(plat->begin_timestamp));
+    xe_transform_set_scale(self, (2.0f + lu_sin(curr_time_sec * 2.0f)) * 0.5f, (2.0f + lu_cos(curr_time_sec * 2.0f)) * 0.5f, 1.0f);
+    xe_transform_set_pos(self, 18.0f * lu_sin(curr_time_sec * 0.7f), 13.0f, -20.0f);
+}
+
 int main(int argc, char **argv)
 {
     plat = xe_platform_create(&(xe_platform_config){
@@ -77,8 +98,12 @@ int main(int argc, char **argv)
     xe_scene_node owl = xe_spine_create("./assets/owl-pma.atlas", "./assets/owl.json", 0.03f, "idle");
     xe_scene_node windmill = xe_spine_create("./assets/windmill-pma.atlas", "./assets/windmill.json", 0.025f, "animation");
     xe_scene_node coin = xe_spine_create("./assets/coin-pma.atlas", "./assets/coin-pro.json", 0.05f, "animation");
+    xe_transform_translate(owl, -1.0f, -5.0f, 0.0f);
     xe_transform_translate(windmill, 0.0f, -10.0f, 0.0f);
+    xe_transform_translate(coin, 18.0f, -13.0f, 0.0f);
+    xe_transform_set_scale(coin, 0.25f, 0.25f, 1.0f);
 
+    xe_scene_register_node_update(owl, &owltracks, owl_update);
     owl_init(owl, &owltracks);
 
     int64_t elapsed = lu_time_elapsed(timer);
@@ -88,33 +113,36 @@ int main(int argc, char **argv)
     xe_scene_node nodes[4];
     for (int i = 0; i < sizeof(nodes) / sizeof(*nodes); ++i) {
         xe_scene_node_desc desc = {
-            .pos_x = 10.0f,
-            .pos_y = 10.0f,
+            .pos_x = 0.0f,
+            .pos_y = 0.0f,
             .pos_z = -20.0f,
-            .scale = 6.0f - i
+            .scale = 1.8f
         };
         nodes[i] = xe_scene_create_drawable(&desc, tex_test[i]);
     }
+    xe_transform_translate(nodes[0], 0.0f, 0.0f, 12.0f);
+    xe_transform_set_scale(nodes[0], 10.f, 10.f, 1.0f);
+    xe_transform_translate(nodes[1], 0.0f, 16.0f, 0.0f);
+    xe_transform_set_scale(nodes[2], 4.0f, 4.0f, 1.0f);
+    xe_transform_translate(nodes[2], -15.0f, 10.0f, 0.0f);
 
+    float deltasec = 0.0f;
+    xe_scene_register_node_update(nodes[1], &deltasec, node1_update);
+    xe_scene_register_node_update(nodes[2], &deltasec, node2_update);
+    xe_scene_register_node_update(nodes[3], NULL, node3_update);
 
     elapsed = lu_time_elapsed(timer);
     plat->timers_data.scene_load = elapsed;
 
     plat->timers_data.init_time = lu_time_elapsed(plat->begin_timestamp);
-    float deltasec = xe_platform_update();
+    deltasec = xe_platform_update();
 
     while(!plat->close) {
-        owl_update(owl, &owltracks);
-
-        /* nodes update */
-        float curr_time_sec = lu_time_sec(lu_time_elapsed(plat->begin_timestamp));
-        xe_transform_set_scale(nodes[0], 1.0f + lu_sin(curr_time_sec), 1.0f + lu_cos(curr_time_sec) * 2.0f, 1.0f);
-        xe_transform_set_rotation_z(nodes[2], curr_time_sec);
-
         /* Systems */
         xe_spine_animation_pass(deltasec);
-        xe_rend_sync();
         xe_scene_update_world();
+        xe_gfx_sync();
+        xe_scene_drawable_draw_pass();
         xe_spine_draw_pass();
 
         deltasec = xe_platform_update();

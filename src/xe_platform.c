@@ -1,5 +1,5 @@
 #include "xe_platform.h"
-#include "xe_renderer.h"
+#include "xe_gfx.h"
 #include "llulu/lu_time.h"
 
 #include <glad/glad.h>
@@ -11,17 +11,17 @@
 
 #ifdef _WIN32
 typedef struct _stat xe_stat_t;
-static inline int xe_stat(const char *path, xe_stat_t *st) { return _stat(path, st); }
+static int xe_stat(const char *path, xe_stat_t *st) { return _stat(path, st); }
 const char * const g_null_stream = "NUL";
 #else /* UNIX */
 typedef struct stat xe_stat_t;
-static inline int xe_stat(const char *path, xe_stat_t *st) { return stat(path, st); }
+static int xe_stat(const char *path, xe_stat_t *st) { return stat(path, st); }
 const char * const g_null_stream = "/dev/null";
 #endif
 
 static xe_platform g_plat;
 
-static inline void
+static void
 xep_log_report()
 {
     XE_LOG(" * Report (%lld frames, %.2f seconds) * ", g_plat.frame_cnt, lu_time_sec(g_plat.timers_data.total));
@@ -69,6 +69,7 @@ xe_platform_create(xe_platform_config *config)
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_FALSE);
+    glfwWindowHint(GLFW_SAMPLES, 4);
 
     g_plat.window = glfwCreateWindow(g_plat.config.display_w,
                            g_plat.config.display_h,
@@ -91,7 +92,7 @@ xe_platform_create(xe_platform_config *config)
     // INIT renderer
     int canv_w, canv_h;
     glfwGetFramebufferSize(win, &canv_w, &canv_h);
-    xe_rend_init(&(xe_rend_config){
+    xe_gfx_init(&(xe_gfx_config){
         .gl_loader = (void *(*)(const char *))glfwGetProcAddress,
         .canvas = {.w = canv_w, .h = canv_h},
         .vert_shader_path = "./assets/vert.glsl",
@@ -109,7 +110,7 @@ xe_platform_create(xe_platform_config *config)
 float
 xe_platform_update(void)
 {
-    xe_rend_render();
+    xe_gfx_render();
     GLFWwindow *win = g_plat.window;
     glfwSwapBuffers(win);
     g_plat.delta_ns = lu_time_elapsed(g_plat.frame_timestamp);
@@ -138,7 +139,7 @@ xe_platform_shutdown()
     }
 
     lu_timestamp start = lu_time_get();
-    xe_rend_shutdown();
+    xe_gfx_shutdown();
     glfwDestroyWindow(g_plat.window);
     glfwTerminate();
     g_plat.timers_data.shutdown = lu_time_elapsed(start);
@@ -168,10 +169,29 @@ xe_file_mtime(const char *path)
     if (err == -1) {
         printf("%s not found.\n", path);
         return XE_ERR_PLAT_FILE;
-    } else if (err == 22) {
+    }
+
+    if (err == 22) {
         printf("Invalid arg in stat call for file %s.\n", path);
         return XE_ERR_ARG;
     }
 
     return st.st_mtime;
+}
+
+bool
+xe_file_read(const char *path, void *buf, size_t bufsize, size_t *out_len)
+{
+    xe_assert(buf && out_len && bufsize);
+    FILE *f = fopen(path, "r");
+    if (!f) {
+        printf("Could not open file %s.\n", path);
+        *out_len = 0;
+        return false;
+    }
+
+    *out_len = fread(buf, 1, bufsize, f);
+    int eof = feof(f);
+    fclose(f);
+    return eof;
 }
