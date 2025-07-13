@@ -5,6 +5,8 @@
 #include <xe_platform.h>
 
 #include <llulu/lu_defs.h>
+#include <llulu/lu_error.h>
+#include <llulu/lu_log.h>
 #include <spine/spine.h>
 #include <spine/extension.h>
 
@@ -91,7 +93,7 @@ xe_spine_draw(lu_mat4 *tr, void *draw_ctx)
 		g_clipper = spSkeletonClipping_create();
 	}
 
-    xe_assert(tr && draw_ctx);
+    lu_err_assert(tr && draw_ctx);
 
     current_batch.material.model = *tr;
     current_batch.material.darkcolor = LU_VEC(0.0f, 0.0f, 0.0f, 1.0f);
@@ -207,12 +209,12 @@ xe_spine_draw(lu_mat4 *tr, void *draw_ctx)
                 break;
 
             case SP_BLEND_MODE_MULTIPLY:
-            	XE_LOG_VERBOSE("Multiply alpha blending not implemented.");
-                xe_assert(0);
+            	lu_log_verbose("Multiply alpha blending not implemented.");
+                lu_err_assert(0);
                 break;
             case SP_BLEND_MODE_SCREEN:
-            	XE_LOG_VERBOSE("Screen alpha blending not implemented.");
-                xe_assert(0);
+            	lu_log_verbose("Screen alpha blending not implemented.");
+                lu_err_assert(0);
                 break;
         };
 
@@ -247,7 +249,7 @@ xe_spine_draw(lu_mat4 *tr, void *draw_ctx)
         current_batch.vtx_count = 0;
     }
 
-    return XE_OK;
+    return LU_ERR_SUCCESS;
 }
 
 void
@@ -276,14 +278,14 @@ xe_spine_load(struct xe_res_spine *sp, const char *atlas, const char *skel_json,
     if (!atlas_it) {
         atlas_it = malloc(sizeof(*atlas_it));
         if (!atlas_it) {
-            XE_LOG_ERR("Malloc failed for size: %lu. Aborting spine load.", sizeof(*atlas_it));
+            lu_log_err("Malloc failed for size: %lu. Aborting spine load.", sizeof(*atlas_it));
             sp->res.state = XE_RS_FAILED;
             return;
         }
         memset(atlas_it, 0, sizeof(*atlas_it));
 
         if (strlen(atlas) >= XE_SP_FILENAME_LEN) {
-            XE_LOG_ERR("filename %s not supported: too long.", atlas);
+            lu_log_err("filename %s not supported: too long.", atlas);
             sp->res.state = XE_RS_FAILED;
             return;
         }
@@ -298,7 +300,7 @@ xe_spine_load(struct xe_res_spine *sp, const char *atlas, const char *skel_json,
         atlas_it->skel_json = spSkeletonJson_create(atlas_it->atlas);
         atlas_it->skel_data = spSkeletonJson_readSkeletonDataFile(atlas_it->skel_json, skel_json);
         if (!atlas_it->skel_data) {
-            XE_LOG_ERR("%s skeleton data: %s", skel_json, atlas_it->skel_json->error);
+            lu_log_err("%s skeleton data: %s", skel_json, atlas_it->skel_json->error);
             sp->res.state = XE_RS_FAILED;
             return;
         }
@@ -307,7 +309,7 @@ xe_spine_load(struct xe_res_spine *sp, const char *atlas, const char *skel_json,
     if (!atlas_it->anim_data) {
         atlas_it->anim_data = spAnimationStateData_create(atlas_it->skel_data);
         if (!atlas_it->anim_data) {
-            XE_LOG_ERR("Could not create animation data.");
+            lu_log_err("Could not create animation data.");
             sp->res.state = XE_RS_FAILED;
             return;
         }
@@ -315,14 +317,14 @@ xe_spine_load(struct xe_res_spine *sp, const char *atlas, const char *skel_json,
 
     sp->skel = spSkeleton_create(atlas_it->skel_data);
     if (!sp->skel) {
-        XE_LOG_ERR("Could not create spine skeleton. Aborting spine load.");
+        lu_log_err("Could not create spine skeleton. Aborting spine load.");
         sp->res.state = XE_RS_FAILED;
         return;
     }
 
     sp->anim = spAnimationState_create(atlas_it->anim_data);
     if (!sp->anim) {
-        XE_LOG_ERR("Could not create spine animation state. Aborting spine load.");
+        lu_log_err("Could not create spine animation state. Aborting spine load.");
         sp->res.state = XE_RS_FAILED;
         return;
     }
@@ -355,7 +357,7 @@ xe_spine_create(const char *atlas, const char *skel_json, float scale, const cha
     }
 
     if (!sp) {
-        XE_LOG_ERR("Could not create a new spine.");
+        lu_log_err("Could not create a new spine.");
         return (xe_scene_node){-1};
     }
 
@@ -384,7 +386,7 @@ void _spAtlasPage_createTexture(spAtlasPage *self, const char *path)
         if (name[0] == '\0') {
             g_atlas_pages.img[i] = xe_image_load(path, self->pma ? XE_IMG_PREMUL_ALPHA : 0);
             if (strlen(path) >= XE_SP_FILENAME_LEN) {
-                XE_LOG_ERR("filename %s not supported: too long.", path);
+                lu_log_err("filename %s not supported: too long.", path);
                 return;
             }
             strcpy(g_atlas_pages.filenames[i], path);
@@ -393,18 +395,18 @@ void _spAtlasPage_createTexture(spAtlasPage *self, const char *path)
         }
 
         if (!strcmp(name, path)) {
-            assert(g_atlas_pages.img[i].id != XE_MAX_IMAGES);
+            lu_err_assert(g_atlas_pages.img[i].id != XE_MAX_IMAGES);
             self->rendererObject = &g_atlas_pages.img[i];
             return;
         }
     }
 
-    XE_LOG_ERR("Max atlas pages limit reached.");
-    xe_assert(0);
+    lu_log_err("Max atlas pages limit reached.");
+    lu_err_assert(0);
     /* who cares? here we go again */
     memset(&g_atlas_pages, 0, sizeof(g_atlas_pages));
     if (strlen(path) >= XE_SP_FILENAME_LEN) {
-        XE_LOG_ERR("filename %s not supported: too long.", path);
+        lu_log_err("filename %s not supported: too long.", path);
     } else {
         strcpy(g_atlas_pages.filenames[0], path);
         g_atlas_pages.img[0] = xe_image_load(path, self->pma ? XE_IMG_PREMUL_ALPHA : 0);

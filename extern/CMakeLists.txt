@@ -1,4 +1,5 @@
-add_library(xe_extern OBJECT)
+add_library(xe_extern OBJECT
+        llulu/include/llulu/lu_log.h)
 set_target_properties(xe_extern PROPERTIES ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/lib)
 
 if (NOT ${CMAKE_C_COMPILER_ID} STREQUAL "TinyCC")
@@ -18,6 +19,9 @@ target_sources(xe_extern PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/glad.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/stb_image.c
     ${CMAKE_CURRENT_SOURCE_DIR}/llulu/src/lu_time.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/llulu/src/lu_error.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/llulu/src/lu_log.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/llulu/src/lu_hooks.c
 )
 
 target_include_directories(xe_extern PRIVATE

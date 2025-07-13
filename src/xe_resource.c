@@ -2,6 +2,9 @@
 #include "xe_gfx.h"
 #include "xe_platform.h"
 
+#include <llulu/lu_log.h>
+#include <llulu/lu_error.h>
+
 #include <stb/stb_image.h>
 #include <stdint.h>
 
@@ -24,9 +27,9 @@ xe_gfx_tex
 xe_image_tex(xe_image image)
 {
     const struct xe_res_image *img = xe_image_ptr(image);
-    xe_assert(img);
+    lu_err_assert(img);
     if (img->res.version != xe_res_version(image.id)) {
-        XE_LOG_ERR("Dangling handle.");
+        lu_log_err("Dangling handle.");
         return (xe_gfx_tex){.idx = -1, .layer = -1};
     }
 
@@ -40,8 +43,8 @@ xe_image_tex(xe_image image)
             return img->tex;
 
         default:
-            XE_LOG_ERR("Image in invalid state.");
-            xe_assert(0);
+            lu_log_err("Image in invalid state.");
+            lu_err_assert(0);
             break;
     }
     return (xe_gfx_tex){.idx = -1, .layer = -1};
@@ -50,8 +53,8 @@ xe_image_tex(xe_image image)
 static int
 xe_pixel_format_from_ch(int ch)
 {
-    static const int formats[] = { XE_ERR, XE_TEX_R, XE_TEX_RG, XE_TEX_RGB, XE_TEX_RGBA };
-    xe_assert((ch > 0) && (ch < (sizeof(formats) / sizeof(*formats))) && "Out of range");
+    static const int formats[] = { LU_ERR_ERROR, XE_TEX_R, XE_TEX_RG, XE_TEX_RGB, XE_TEX_RGBA };
+    lu_err_assert((ch > 0) && (ch < (sizeof(formats) / sizeof(*formats))) && "Out of range");
     return formats[ch];
 }
 
@@ -76,7 +79,7 @@ xe_image_load(const char *path, int tex_flags)
         int w, h, c;
         img->data = stbi_load(img->path, &w, &h, &c, 0);
         if (!img->data) {
-            XE_LOG_ERR("Could not load image %s.", img->path);
+            lu_log_err("Could not load image %s.", img->path);
             img->res.state = XE_RS_FAILED;
         } else {
             img->flags = tex_flags;
@@ -89,7 +92,7 @@ xe_image_load(const char *path, int tex_flags)
                 .format = xe_pixel_format_from_ch(img->c),
                 .flags = 0  // Don't forward flags that prevent textures from grouping in arrays
             });
-            assert(img->tex.idx >= 0);
+            lu_err_assert(img->tex.idx >= 0);
             img->res.state = XE_RS_STAGED;
 
             xe_gfx_tex_load(img->tex, img->data);

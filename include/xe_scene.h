@@ -1,7 +1,7 @@
 #ifndef __XE_SCENE_H__
 #define __XE_SCENE_H__
 
-#include "xe_gfx.h"
+#include <llulu/lu_math.h>
 
 /* API Handle */
 typedef unsigned int xe_handle;

@@ -2,6 +2,7 @@
 #define __XE_SCENE_INTERNAL_H__
 
 #include <xe_scene.h>
+#include <xe_gfx.h>
 
 #include <stdint.h>
 

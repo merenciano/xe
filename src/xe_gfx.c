@@ -3,6 +3,9 @@
 
 #include <llulu/lu_time.h>
 #include <llulu/lu_math.h>
+#include <llulu/lu_hooks.h>
+#include <llulu/lu_error.h>
+#include <llulu/lu_log.h>
 #include <glad/glad.h>
 
 #include <string.h>
@@ -164,9 +167,9 @@ xe_gfx_sync(void)
     GLenum err = glClientWaitSync(g_r.fence[g_r.phase], GL_SYNC_FLUSH_COMMANDS_BIT, XE_MAX_SYNC_TIMEOUT_NANOSEC);
     int64_t sync_time_ns = lu_time_elapsed(start);
     if (err == GL_TIMEOUT_EXPIRED) {
-        XE_LOG_ERR("Something is wrong with the gpu fences: sync blocked for more than %d ms.", (int)(XE_MAX_SYNC_TIMEOUT_NANOSEC / 1000000));
+        lu_log_err("Something is wrong with the gpu fences: sync blocked for more than %d ms.", (int)(XE_MAX_SYNC_TIMEOUT_NANOSEC / 1000000));
     } else if (err == GL_CONDITION_SATISFIED) {
-        XE_LOG_WARN("GPU fence blocked for %lld ns.", sync_time_ns);
+        lu_log_warn("GPU fence blocked for %lld ns.", sync_time_ns);
     }
 }
 
@@ -189,7 +192,7 @@ xe_shader_load_src(const char *vert_src, int vert_len, const char *frag_src, int
     glGetShaderiv(vert_id, GL_COMPILE_STATUS, &err);
     if (!err) {
         glGetShaderInfoLog(vert_id, XE_MAX_ERROR_MSG_LEN, NULL, out_log);
-        XE_LOG_ERR("Vert Shader:\n%s\n", out_log);
+        lu_log_err("Vert Shader:\n%s\n", out_log);
         glDeleteShader(vert_id);
         return;
     }
@@ -202,7 +205,7 @@ xe_shader_load_src(const char *vert_src, int vert_len, const char *frag_src, int
     glGetShaderiv(frag_id, GL_COMPILE_STATUS, &err);
     if (!err) {
         glGetShaderInfoLog(frag_id, XE_MAX_ERROR_MSG_LEN, NULL, out_log);
-        XE_LOG_ERR("Frag Shader:\n%s\n", out_log);
+        lu_log_err("Frag Shader:\n%s\n", out_log);
         glDetachShader(g_r.pipeline.shader.program_id, vert_id);
         glDeleteShader(frag_id);
         glDeleteShader(vert_id);
@@ -215,7 +218,7 @@ xe_shader_load_src(const char *vert_src, int vert_len, const char *frag_src, int
     glGetProgramiv(g_r.pipeline.shader.program_id, GL_LINK_STATUS, &err);
     if (!err) {
         glGetProgramInfoLog(g_r.pipeline.shader.program_id, XE_MAX_ERROR_MSG_LEN, NULL, out_log);
-        XE_LOG_ERR("Program link error:\n%s\n", out_log);
+        lu_log_err("Program link error:\n%s\n", out_log);
     }
 
     glUseProgram(g_r.pipeline.shader.program_id);
@@ -235,14 +238,14 @@ xe_shader_load_path(const char *vert_path, const char *frag_path)
     // Vert
     size_t vert_len;
     bool ret = xe_file_read(vert_path, vert_buf, XE_MAX_SHADER_SOURCE_LEN - 1, &vert_len);
-    xe_assert(ret);
+    lu_err_assert(ret);
     vert_buf[vert_len] = '\0';  // TODO: pass len to glShaderSource instead of this (remove the '- 1' in the fread too).
 
 
     // Frag
     size_t frag_len;
     ret = xe_file_read(frag_path, frag_buf, XE_MAX_SHADER_SOURCE_LEN - 1, &frag_len);
-    xe_assert(ret);
+    lu_err_assert(ret);
     frag_buf[frag_len] = '\0';  // TODO: pass len to glShaderSource instead of this (remove the '- 1' in the fread too).
 
     xe_shader_load_src(vert_buf, vert_len, frag_buf, frag_len);
@@ -264,8 +267,8 @@ xe_shader_gpu_setup(void)
 xe_gfx_tex
 xe_gfx_tex_alloc(xe_gfx_texfmt fmt)
 {
-    xe_assert(fmt.width + fmt.height != 0);
-    xe_assert(fmt.format >= 0 && fmt.format < XE_TEX_FMT_COUNT && "Invalid pixel format.");
+    lu_err_assert(fmt.width + fmt.height != 0);
+    lu_err_assert(fmt.format >= 0 && fmt.format < XE_TEX_FMT_COUNT && "Invalid pixel format.");
 
     // Look for an array of textures of the same format and push the new tex.
     for (int i = 0; i < XE_MAX_TEXTURE_ARRAYS; ++i) {
@@ -284,16 +287,16 @@ xe_gfx_tex_alloc(xe_gfx_texfmt fmt)
         }
     }
 
-    XE_LOG_ERR("Error: xe_texture_reserve failed (full texture pool). Consider increasing XE_MAX_TEXTURE_ARRAYS.");
+    lu_log_err("Error: xe_texture_reserve failed (full texture pool). Consider increasing XE_MAX_TEXTURE_ARRAYS.");
     return (xe_gfx_tex){-1, -1};
 }
 
 void
 xe_gfx_tex_load(xe_gfx_tex tex, void *data)
 {
-    xe_assert(tex.idx < XE_MAX_TEXTURE_ARRAYS && tex.layer < XE_MAX_TEXTURE_LAYERS);
+    lu_err_assert(tex.idx < XE_MAX_TEXTURE_ARRAYS && tex.layer < XE_MAX_TEXTURE_LAYERS);
     const xe_gfx_texfmt *fmt = &g_r.tex.fmt[tex.idx];
-    xe_assert(fmt->width && fmt->height);
+    lu_err_assert(fmt->width && fmt->height);
     GLint init;
     glGetTextureParameteriv(g_r.tex.id[tex.idx], GL_TEXTURE_IMMUTABLE_FORMAT, &init);
     if (init == GL_FALSE) {
@@ -383,8 +386,8 @@ xe_mesh_add(const void *vert, size_t vert_size, const void *indices, size_t indi
 #ifdef XE_DEBUG
     xe_gfx_sync();
 #endif
-    assert(vert_size < (XE_VERTICES_MAP_SIZE / 3));
-    assert(indices_size < (XE_INDICES_MAP_SIZE / 3));
+    lu_err_expects(vert_size < (XE_VERTICES_MAP_SIZE / 3));
+    lu_err_expects(indices_size < (XE_INDICES_MAP_SIZE / 3));
 
     xe_mesh mesh = { .idx_count = indices_size / sizeof(xe_gfx_idx)};
 
@@ -412,7 +415,7 @@ xe_material_add(const xe_gfx_material *mat)
 #ifdef XE_DEBUG
     xe_gfx_sync();
 #endif
-    assert(((g_r.uniforms.head - sizeof(xe_shader_data) * g_r.phase - offsetof(xe_shader_data, data)) % sizeof(xe_shader_shape_data)) == 0);
+    lu_err_expects(((g_r.uniforms.head - sizeof(xe_shader_data) * g_r.phase - offsetof(xe_shader_data, data)) % sizeof(xe_shader_shape_data)) == 0);
     xe_shader_shape_data *uniform = (void*)((char*)g_r.uniforms.data + g_r.uniforms.head);
     uniform->model = mat->model;
     uniform->color = mat->color;
@@ -436,7 +439,7 @@ xe_gfx_push(const void *vert, size_t vert_size, const void *indices, size_t indi
     xe_gfx_sync();
 #endif
     size_t frame_start = g_r.phase * (XE_DRAW_INDIRECT_MAP_SIZE / 3);
-    assert(g_r.drawlist.head - frame_start < XE_DRAW_INDIRECT_MAP_SIZE / 3);
+    lu_err_expects(g_r.drawlist.head - frame_start < XE_DRAW_INDIRECT_MAP_SIZE / 3);
 
     *((xe_drawcmd*)((char*)g_r.drawlist.data + g_r.drawlist.head)) = (xe_drawcmd){
         .element_count = mesh.idx_count,
@@ -451,6 +454,8 @@ xe_gfx_push(const void *vert, size_t vert_size, const void *indices, size_t indi
 void
 xe_gfx_render(void)
 {
+    lu_hook_notify(LU_HOOK_PRE_RENDER, &g_r);
+
     {
         static int last_w, last_h;
         if (last_w != g_r.pipeline.target.w || last_h != g_r.pipeline.target.h) {
@@ -468,15 +473,16 @@ xe_gfx_render(void)
 
     size_t offset = (g_r.phase * (XE_DRAW_INDIRECT_MAP_SIZE / 3));
     size_t cmdbuf_size = g_r.drawlist.head - offset;
-    xe_assert(cmdbuf_size < (XE_DRAW_INDIRECT_MAP_SIZE / 3) && "The draw command list is larger than a third of the mapped buffer.");
+    lu_err_assert(cmdbuf_size < (XE_DRAW_INDIRECT_MAP_SIZE / 3) && "The draw command list is larger than a third of the mapped buffer.");
     size_t cmdbuf_count = cmdbuf_size / sizeof(xe_drawcmd);
-    xe_assert(cmdbuf_count < XE_MAX_DRAW_INDIRECT);
+    lu_err_assert(cmdbuf_count < XE_MAX_DRAW_INDIRECT);
     glMultiDrawElementsIndirect(GL_TRIANGLES, sizeof(xe_gfx_idx) == 4 ? GL_UNSIGNED_INT : GL_UNSIGNED_SHORT, (void*)offset, cmdbuf_count, 0);
 
     g_r.fence[g_r.phase] = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
     g_r.phase = (g_r.phase + 1) % 3;
     g_r.uniforms.head = g_r.phase * sizeof(xe_shader_data) + offsetof(xe_shader_data, data);
     g_r.drawlist.head = g_r.phase * (XE_DRAW_INDIRECT_MAP_SIZE / 3);
+    lu_hook_notify(LU_HOOK_POST_RENDER, &g_r);
 }
 
 void

@@ -1,11 +1,11 @@
-#include "xe_scene_internal.h"
 #include "xe_scene.h"
+#include "xe_scene_internal.h"
 #include "xe_gfx.h"
-#include "xe_platform.h"
 
 #include <llulu/lu_defs.h>
 #include <llulu/lu_math.h>
-#include <llulu/lu_str.h>
+#include <llulu/lu_error.h>
+#include <llulu/lu_log.h>
 
 #include <string.h>
 
@@ -77,21 +77,21 @@ xe_scene_dispatch_updates(void)
 static const struct xe_graph_node *
 get_node(xe_scene_node n)
 {
-    xe_assert(xe_res_index(n.hnd) < g_node_count && "Node index out of range.");
+    lu_err_assert(xe_res_index(n.hnd) < g_node_count && "Node index out of range.");
     return g_nodes + xe_res_index(n.hnd);
 }
 
 static lu_mat4 *
 get_tr(xe_scene_node n)
 {
-    xe_assert(get_node(n)->transform_index < g_node_count && "Transform index out of range.");
+    lu_err_assert(get_node(n)->transform_index < g_node_count && "Transform index out of range.");
     return g_transforms + get_node(n)->transform_index;
 }
 
 static lu_mat4 *
 get_global_tr(xe_scene_node n)
 {
-    xe_assert(get_node(n)->transform_index < g_node_count && "Transform index out of range.");
+    lu_err_assert(get_node(n)->transform_index < g_node_count && "Transform index out of range.");
     return global_transforms + get_node(n)->transform_index;
 }
 
@@ -111,13 +111,13 @@ int
 xe_drawable_draw(lu_mat4 *tr, void *draw_ctx)
 {
     if (!draw_ctx) {
-        XE_LOG_ERR("draw_ctx = NULL, ignoring xe_drawable_draw call.");
-        return XE_ERR_ARG;
+        lu_log_err("draw_ctx = NULL, ignoring xe_drawable_draw call.");
+        return LU_ERR_BADARG;
     }
     struct xe_graph_drawable *node = draw_ctx;
     xe_gfx_material material = (xe_gfx_material){.model = *tr, .color = LU_VEC(1.0f, 1.0f, 1.0f, 1.0f), .darkcolor = LU_VEC(0.0f, 0.0f, 0.0f, 1.0f), .tex = xe_image_ptr(node->img)->tex, .pma = 0};
     xe_gfx_push(QUAD_VERTICES, sizeof(QUAD_VERTICES), QUAD_INDICES, sizeof(QUAD_INDICES), &material);
-    return XE_OK;
+    return LU_ERR_SUCCESS;
 }
 
 void
@@ -164,7 +164,7 @@ xe_scene_get_state(xe_scene_iter_stack_t* stack)
 static bool
 xe_scene_pop_state(xe_scene_iter_stack_t* stack)
 {
-    xe_assert(stack);
+    lu_err_assert(stack);
     if (--stack->count < 1) {
         stack->count = 1;
     }
@@ -179,7 +179,7 @@ xe_scene_push_state(xe_scene_iter_stack_t* stack, int node_idx, float *global_tr
     stack->buf[stack->count].remaining_children = node->child_count;
     stack->buf[stack->count].parent_global_transform = global_tr;
     stack->count++;
-    assert(stack->count < XE_CFG_MAX_SCENE_GRAPH_DEPTH);
+    lu_err_ensures(stack->count < XE_CFG_MAX_SCENE_GRAPH_DEPTH);
 }
 
 static bool
@@ -219,7 +219,7 @@ xe_scene_update_world(void)
         } else {
             if (!xe_scene_step_state(&state)) {
                 if (!xe_scene_pop_state(&state)) {
-                    assert((i + 1) == g_node_count && "The scene graph only has one root node, so the current has to be the last one of the vector.");
+                    lu_err_assert((i + 1) == g_node_count && "The scene graph only has one root node, so the current has to be the last one of the vector.");
                     break;
                 }
             }

@@ -1,6 +1,9 @@
 #include "xe_platform.h"
 #include "xe_gfx.h"
-#include "llulu/lu_time.h"
+
+#include <llulu/lu_time.h>
+#include <llulu/lu_log.h>
+#include <llulu/lu_hooks.h>
 
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
@@ -24,44 +27,45 @@ static xe_platform g_plat;
 static void
 xep_log_report()
 {
-    XE_LOG(" * Report (%lld frames, %.2f seconds) * ", g_plat.frame_cnt, lu_time_sec(g_plat.timers_data.total));
-    XE_LOG("Init time: %lld ms", lu_time_ms(g_plat.timers_data.init_time));
-    XE_LOG(" - glfw:\t%lld ms", lu_time_ms(g_plat.timers_data.glfw_init));
-    XE_LOG(" - img load:\t%lld ms", lu_time_ms(g_plat.timers_data.img_load));
-    XE_LOG(" - renderer:\t%lld ms", lu_time_ms(g_plat.timers_data.renderer_init));
-    XE_LOG(" - scene:\t%lld ms", lu_time_ms(g_plat.timers_data.scene_load));
+    lu_log(" * Report (%lld frames, %.2f seconds) * ", g_plat.frame_cnt, lu_time_sec(g_plat.timers_data.total));
+    lu_log("Init time: %lld ms", lu_time_ms(g_plat.timers_data.init_time));
+    lu_log(" - glfw:\t%lld ms", lu_time_ms(g_plat.timers_data.glfw_init));
+    lu_log(" - img load:\t%lld ms", lu_time_ms(g_plat.timers_data.img_load));
+    lu_log(" - renderer:\t%lld ms", lu_time_ms(g_plat.timers_data.renderer_init));
+    lu_log(" - scene:\t%lld ms", lu_time_ms(g_plat.timers_data.scene_load));
     int64_t sum = 0;
     for (int i = 0; i < 256; ++i) {
         sum += g_plat.timers_data.frame_time[i];
     }
     sum /= 256;
-    XE_LOG("Last 256 frame times average: %.2f ms\n", sum / 1000000.0f);
-    XE_LOG("Shutdown: %lld ms\n", lu_time_ms(g_plat.timers_data.shutdown));
+    lu_log("Last 256 frame times average: %.2f ms\n", sum / 1000000.0f);
+    lu_log("Shutdown: %lld ms\n", lu_time_ms(g_plat.timers_data.shutdown));
 }
 
 xe_platform *
 xe_platform_create(xe_platform_config *config)
 {
     if (g_plat.initialized) {
-        XE_LOG("xep_init call ignored: platform already initialized.");
+        lu_log("xep_init call ignored: platform already initialized.");
         return &g_plat;
     }
 
     g_plat.begin_timestamp = lu_time_get();
+    lu_hook_notify(LU_HOOK_PRE_INIT, NULL);
 
     g_plat.name = "Desktop";
     g_plat.config = *config;
     g_plat.log_stream = fopen(g_plat.config.log_filename, "w");
     if (!g_plat.log_stream) {
         g_plat.log_stream = stdout;
-        XE_LOG_VERBOSE("fopen file %s failed, using stdout instead.", g_plat.config.log_filename);
+        lu_log_verbose("fopen file %s failed, using stdout instead.", g_plat.config.log_filename);
     }
 
-    xe_assert(g_plat.log_stream);
+    lu_err_assert(g_plat.log_stream);
 
     lu_timestamp timer = lu_time_get();
     if (!glfwInit()) {
-        XE_LOG_PANIC("Could not init glfw. Aborting...\n");
+        lu_log_panic("Could not init glfw. Aborting...\n");
         return NULL;
     }
 
@@ -78,7 +82,7 @@ xe_platform_create(xe_platform_config *config)
     GLFWwindow *win = g_plat.window;
     if (!win) {
         glfwTerminate();
-        XE_LOG_PANIC("Could not open glfw window. Aborting...\n");
+        lu_log_panic("Could not open glfw window. Aborting...\n");
         return NULL;
     }
 
@@ -104,6 +108,7 @@ xe_platform_create(xe_platform_config *config)
     g_plat.frame_timestamp = lu_time_get();
 
     g_plat.initialized = true;
+    lu_hook_notify(LU_HOOK_POST_INIT, &g_plat);
     return &g_plat;
 }
 
@@ -134,6 +139,7 @@ xe_platform_update(void)
 void
 xe_platform_shutdown()
 {
+    lu_hook_notify(LU_HOOK_PRE_SHUTDOWN, &g_plat);
     if (!g_plat.initialized) {
         return;
     }
@@ -147,6 +153,7 @@ xe_platform_shutdown()
     xep_log_report();
     fclose(g_plat.log_stream);
     g_plat.initialized = false;
+    lu_hook_notify(LU_HOOK_POST_SHUTDOWN, &g_plat);
 }
 
 void
@@ -167,13 +174,13 @@ xe_file_mtime(const char *path)
     xe_stat_t st;
     int err = xe_stat(path, &st);
     if (err == -1) {
-        printf("%s not found.\n", path);
-        return XE_ERR_PLAT_FILE;
+        lu_log_err("%s not found.\n", path);
+        return LU_ERR_FILE;
     }
 
     if (err == 22) {
-        printf("Invalid arg in stat call for file %s.\n", path);
-        return XE_ERR_ARG;
+        lu_log_err("Invalid arg in stat call for file %s.\n", path);
+        return LU_ERR_BADARG;
     }
 
     return st.st_mtime;
@@ -182,10 +189,10 @@ xe_file_mtime(const char *path)
 bool
 xe_file_read(const char *path, void *buf, size_t bufsize, size_t *out_len)
 {
-    xe_assert(buf && out_len && bufsize);
+    lu_err_assert(buf && out_len && bufsize);
     FILE *f = fopen(path, "r");
     if (!f) {
-        printf("Could not open file %s.\n", path);
+        lu_log_err("Could not open file %s.\n", path);
         *out_len = 0;
         return false;
     }
