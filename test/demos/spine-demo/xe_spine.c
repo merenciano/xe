@@ -1,6 +1,6 @@
 #include "xe_spine.h"
 #include "xe_gfx.h"
-#include "../src/xe_scene_internal.h"
+#include "../spine-demo/xe_scene_internal.h"
 
 #include <xe_platform.h>
 

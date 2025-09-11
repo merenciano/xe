@@ -14,3 +14,5 @@ Toy renderer to be used as a playground for attempting to implement and understa
 #### CONFIG COMPILE OPTIONS
 - XE_CFG_LOG_DISABLED: Disable log printing.
 - XE_CFG_LOG_RESTRICTED: Only print error logs.
+asdasdsads
+
