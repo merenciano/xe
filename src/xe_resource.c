@@ -8,9 +8,18 @@
 #include <stb/stb_image.h>
 #include <stdint.h>
 
+enum {
+    XE_IMG_INVALID_HANDLE = XE_MAX_IMAGES
+};
+
+static inline bool
+xe_image_is_valid(xe_image img)
+{
+    return img.id != XE_IMG_INVALID_HANDLE;
+}
+
 struct xe_res_arr {
     struct xe_res_image img[XE_MAX_IMAGES];
-
 };
 
 static struct xe_res_arr g_res;
@@ -59,9 +68,9 @@ xe_pixel_format_from_ch(int ch)
 }
 
 xe_image
-xe_image_load(const char *path, int tex_flags)
+xe_image_generate_handle(void)
 {
-    xe_image h = {.id = XE_MAX_IMAGES};
+    xe_image h = {.id = XE_IMG_INVALID_HANDLE};
     struct xe_res_image *img = NULL;
     for (int i = 0; i < XE_MAX_IMAGES; ++i) {
         if (g_res.img[i].res.state == XE_RS_FREE) {
@@ -72,14 +81,54 @@ xe_image_load(const char *path, int tex_flags)
             break;
         }
     }
+    return h;
+}
 
-    if (img) {
+xe_image
+xe_image_load_data(const void *data, int width, int height, int channels, int tex_flags)
+{
+    xe_image hnd = xe_image_generate_handle();
+
+    if (xe_image_is_valid(hnd)) {
+        struct xe_res_image *img = (struct xe_res_image*)xe_image_ptr(hnd);
+        img->path = "";
+        img->res.state = XE_RS_LOADING;
+        img->flags = tex_flags;
+        img->w = width;
+        img->h = height;
+        img->c = channels;
+        img->tex = xe_gfx_tex_alloc((xe_gfx_texfmt){
+            .width = img->w,
+            .height = img->h,
+            .format = xe_pixel_format_from_ch(img->c),
+            .flags = 0  // Don't forward flags that prevent textures from grouping in arrays
+        });
+        lu_err_assert(img->tex.idx >= 0);
+        img->res.state = XE_RS_STAGED;
+
+        xe_gfx_tex_load(img->tex, img->data);
+        img->data = NULL;
+        img->res.state = XE_RS_COMMITED;
+    } else {
+        lu_log_err("Could not generate image handle.");
+    }
+
+    return hnd;
+}
+
+xe_image
+xe_image_load(const char *path, int tex_flags)
+{
+    xe_image hnd = xe_image_generate_handle();
+
+    if (xe_image_is_valid(hnd)) {
+        struct xe_res_image *img = (struct xe_res_image*)xe_image_ptr(hnd);
         img->path = path;
         img->res.state = XE_RS_LOADING;
         int w, h, c;
-        img->data = stbi_load(img->path, &w, &h, &c, 0);
-        if (!img->data) {
-            lu_log_err("Could not load image %s.", img->path);
+        void *data = stbi_load(path, &w, &h, &c, 0);
+        if (!data) {
+            lu_log_err("Could not load image %s.", path);
             img->res.state = XE_RS_FAILED;
         } else {
             img->flags = tex_flags;
@@ -100,7 +149,10 @@ xe_image_load(const char *path, int tex_flags)
             img->data = NULL;
             img->res.state = XE_RS_COMMITED;
         }
+    } else {
+        lu_log_err("Could not generate image handle.");
     }
 
-    return h;
+    return hnd;
 }
+
