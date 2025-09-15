@@ -3,6 +3,7 @@
 
 #include <llulu/lu_time.h>
 
+#include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
 

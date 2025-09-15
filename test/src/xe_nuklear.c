@@ -1,6 +1,8 @@
 #include "xe_nuklear.h"
 #include <xe_scene.h>
+#include <../src/xe_scene_internal.h>
 #include <xe_gfx.h>
+#include <llulu/lu_defs.h>
 #include <llulu/lu_error.h>
 
 #define NK_INCLUDE_FIXED_TYPES
@@ -1449,6 +1451,29 @@ void xe_nk_update(void)
     nk_buffer_init_default(&vtx_buf);
     nk_buffer_init_default(&idx_buf);
     nk_convert(&g_nuk.ctx, &cmd_buf, &vtx_buf, &idx_buf, &config);
-}
 
+    lu_mat4 identity;
+    lu_mat4_identity((float*)&identity.m);
+
+    struct nk_draw_command *cmd = NULL;
+    nk_draw_foreach(cmd, &g_nuk.ctx, &cmd_buf) {
+            if (cmd->elem_count > 0) {
+                xe_gfx_material mat = (xe_gfx_material) {
+                    .model = identity,
+                    .color = LU_VEC(1.0f, 1.0f, 1.0f, 1.0f),
+                    .darkcolor = LU_VEC(1.0f, 1.0f, 1.0f, 1.0f),
+                    .tex = xe_image_ptr(*(xe_image*)&cmd->texture)->tex,
+                    .pma = 0};
+                };
+                sg_apply_scissor_rectf(cmd->clip_rect.x * dpi_scale,
+                                       cmd->clip_rect.y * dpi_scale,
+                                       cmd->clip_rect.w * dpi_scale,
+                                       cmd->clip_rect.h * dpi_scale,
+                                       true);
+                xe_gfx_push(
+                sg_draw(0, (int)cmd->elem_count, 1);
+                bindings.index_buffer_offset += (int)cmd->elem_count * (int)sizeof(uint16_t);
+            }
+        }
+}
 
