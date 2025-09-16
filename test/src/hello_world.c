@@ -44,7 +44,7 @@ int main(int argc, char **argv)
     }
 
 
-    hello_node.tex = xe_image_load("./assets/tex_test_3.png", 0);
+    hello_node.tex = xe_image_load("./assets/default.png", 0);
     lu_mat4_identity((float*)&hello_node.tr);
     /* scale */
     hello_node.tr.m[0] =  0.5f;
