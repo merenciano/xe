@@ -38,7 +38,7 @@ typedef struct xe_shader_shape_data {
     int32_t albedo_idx;
     float albedo_layer;
     float pma; // TODO: Use DarkColor.a ???
-    float padding;
+    int32_t dark_is_clip; /* TODO: unify 'modes' like clip and darkcolor in a single integer */
 } xe_shader_shape_data;
 
 typedef struct xe_shader_data {
@@ -371,6 +371,12 @@ xe_gfx_init(xe_gfx_config *cfg)
     glCreateTextures(GL_TEXTURE_2D_ARRAY, XE_MAX_TEXTURE_ARRAYS, g_r.tex.id);
     glBindTextures(0, XE_MAX_TEXTURE_ARRAYS, g_r.tex.id);
 
+    /* For nuklear clipping (TODO: preprocessor branch) */
+    glEnable(GL_CLIP_DISTANCE0);
+    glEnable(GL_CLIP_DISTANCE1);
+    glEnable(GL_CLIP_DISTANCE2);
+    glEnable(GL_CLIP_DISTANCE3);
+
     return true;
 }
 
@@ -417,6 +423,7 @@ xe_material_add(const xe_gfx_material *mat)
     uniform->albedo_idx = mat->tex.idx;
     uniform->albedo_layer = (float)mat->tex.layer;
     uniform->pma = mat->pma;
+    uniform->dark_is_clip = mat->dark_is_clip;
 
     int idx = (g_r.uniforms.head - g_r.phase * sizeof(xe_shader_data) - offsetof(xe_shader_data, data)) / sizeof(xe_shader_shape_data);
     g_r.uniforms.head += sizeof(xe_shader_shape_data);

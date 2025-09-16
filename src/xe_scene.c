@@ -115,7 +115,7 @@ xe_drawable_draw(lu_mat4 *tr, void *draw_ctx)
         return LU_ERR_BADARG;
     }
     struct xe_graph_drawable *node = draw_ctx;
-    xe_gfx_material material = (xe_gfx_material){.model = *tr, .color = LU_VEC(1.0f, 1.0f, 1.0f, 1.0f), .darkcolor = LU_VEC(0.0f, 0.0f, 0.0f, 1.0f), .tex = xe_image_ptr(node->img)->tex, .pma = 0};
+    xe_gfx_material material = (xe_gfx_material){.model = *tr, .color = LU_VEC(1.0f, 1.0f, 1.0f, 1.0f), .darkcolor = LU_VEC(0.0f, 0.0f, 0.0f, 1.0f), .tex = xe_image_ptr(node->img)->tex, .pma = 0, .dark_is_clip = 0};
     xe_gfx_push(QUAD_VERTICES, sizeof(QUAD_VERTICES), QUAD_INDICES, sizeof(QUAD_INDICES), &material);
     return LU_ERR_SUCCESS;
 }

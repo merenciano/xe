@@ -7,7 +7,7 @@ struct ShapeData {
     int albedo_idx;
     float albedo_layer;
     float pma;
-    float pad1;
+    int dark_is_clip;
 };
 
 layout(std140, binding=0) uniform u_data {
@@ -30,6 +30,11 @@ void main()
     ShapeData mat = shape[v_in.shape_idx];
     vec4 tex = texture(u_textures[mat.albedo_idx], vec3(v_in.uv, mat.albedo_layer));
 
+    vec3 dark_color = vec3(0.0, 0.0, 0.0);
+    if (shape[v_in.shape_idx].dark_is_clip == 0) {
+        dark_color = mat.darkcolor.rgb;
+    }
+
     frag_color.a = tex.a * v_in.color.a;
-    frag_color.rgb = ((tex.a - 1.0) * mat.pma + 1.0 - tex.rgb) * mat.darkcolor.rgb + tex.rgb * v_in.color.rgb;
+    frag_color.rgb = ((tex.a - 1.0) * mat.pma + 1.0 - tex.rgb) * dark_color + tex.rgb * v_in.color.rgb;
 }

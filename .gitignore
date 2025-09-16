@@ -8,5 +8,6 @@ bin/assets/**.png
 bin/assets/**.atlas
 bin/assets/**.json
 !bin/assets/**.glsl
+!bin/assets/default.png
 build/
 out/

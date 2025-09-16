@@ -1475,7 +1475,6 @@ xe_nk_new_frame(void)
 void
 xe_nk_render(void)
 {
-
     static const struct nk_draw_vertex_layout_element vertex_layout[] = {
         {NK_VERTEX_POSITION, NK_FORMAT_FLOAT, NK_OFFSETOF(xe_gfx_vtx, x)},
         {NK_VERTEX_TEXCOORD, NK_FORMAT_FLOAT, NK_OFFSETOF(xe_gfx_vtx, u)},
@@ -1507,10 +1506,25 @@ xe_nk_render(void)
     xe_mesh mesh = xe_mesh_add(nk_buffer_memory_const(&vtx_buf), nk_buffer_total(&vtx_buf),
                                nk_buffer_memory_const(&idx_buf), nk_buffer_total(&idx_buf));
 
+    float nx = 2.0f / g_nuk.plat->config.display_w;
+    float ny = 2.0f / g_nuk.plat->config.display_h;
+
     int first_index = mesh.first_idx;
     const struct nk_draw_command *cmd = NULL;
     nk_draw_foreach(cmd, &g_nuk.ctx, &cmd_buf) {
         if (cmd->elem_count > 0) {
+
+            /* NDC coords for vertex ClipDistance clipping (TODO: AI generated, check correctness) */
+            float x0 = cmd->clip_rect.x;
+            float y0 = cmd->clip_rect.y;
+            float x1 = cmd->clip_rect.x + cmd->clip_rect.w;
+            float y1 = cmd->clip_rect.y + cmd->clip_rect.h;
+
+            float xmin_ndc = x0 * nx - 1.0f;
+            float xmax_ndc = x1 * nx - 1.0f;
+            float ymin_ndc = 1.0f - y1 * ny;
+            float ymax_ndc = 1.0f - y0 * ny;
+
             xe_mesh submesh = {
                 .base_vtx = mesh.base_vtx,
                 .first_idx = first_index,
@@ -1521,12 +1535,12 @@ xe_nk_render(void)
             xe_gfx_material mat = (xe_gfx_material) {
                 .model = LU_MAT4_IDENTITY,
                 .color = LU_VEC(1.0f, 1.0f, 1.0f, 1.0f),
-                .darkcolor = LU_VEC(0.0f, 0.0f, 0.0f, 1.0f),
+                .darkcolor = LU_VEC(xmin_ndc, ymin_ndc, xmax_ndc, ymax_ndc),
                 .tex = xe_image_ptr(img)->tex,
-                .pma = 1
+                .pma = 0,
+                .dark_is_clip = 1
             };
             int draw_id = xe_material_add(&mat);
-            /* TODO: Scissor cmd->clip_rect */
             xe_cmd_add(submesh, draw_id);
         }
     }

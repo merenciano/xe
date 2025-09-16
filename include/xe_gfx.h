@@ -62,6 +62,7 @@ typedef struct xe_gfx_material {
     lu_vec4 darkcolor;
     xe_gfx_tex tex;
     float pma;
+    int32_t dark_is_clip;
 } xe_gfx_material;
 
 bool xe_gfx_init(xe_gfx_config *config);

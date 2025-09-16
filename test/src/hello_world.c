@@ -69,7 +69,8 @@ int main(int argc, char **argv)
             .color = LU_VEC(1.0f, 1.0f, 1.0f, 1.0f),
             .darkcolor = LU_VEC(0.0f, 0.0f, 0.0f, 1.0f),
             .tex = xe_image_ptr(hello_node.tex)->tex,
-            .pma = 0
+            .pma = 0,
+            .dark_is_clip = 0
         };
 
         xe_nk_overview(nk_ctx);
