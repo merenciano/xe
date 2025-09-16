@@ -79,5 +79,5 @@ void xe_gfx_tex_load(xe_gfx_tex tex, void *data);
 void xe_gfx_push(const void *vert, size_t vert_size, const void *indices, size_t indices_size, xe_gfx_material *material);
 void xe_gfx_render();
 
-
 #endif /* __XE_GFX_H__ */
+

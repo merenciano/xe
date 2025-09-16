@@ -1,6 +1,5 @@
 #include "xe_scene_internal.h"
 #include "xe_gfx.h"
-#include "xe_platform.h"
 
 #include <llulu/lu_log.h>
 #include <llulu/lu_error.h>
@@ -93,6 +92,7 @@ xe_image_load_data(const void *data, int width, int height, int channels, int te
         struct xe_res_image *img = (struct xe_res_image*)xe_image_ptr(hnd);
         img->path = "";
         img->res.state = XE_RS_LOADING;
+        img->data = (void*)data;
         img->flags = tex_flags;
         img->w = width;
         img->h = height;
@@ -126,8 +126,8 @@ xe_image_load(const char *path, int tex_flags)
         img->path = path;
         img->res.state = XE_RS_LOADING;
         int w, h, c;
-        void *data = stbi_load(path, &w, &h, &c, 0);
-        if (!data) {
+        img->data = stbi_load(path, &w, &h, &c, 0);
+        if (!img->data) {
             lu_log_err("Could not load image %s.", path);
             img->res.state = XE_RS_FAILED;
         } else {

@@ -1,4 +1,5 @@
 #include "xe_gfx.h"
+#include "xe_gfx_internal.h"
 #include "xe_platform.h"
 
 #include <llulu/lu_time.h>
@@ -29,12 +30,6 @@ enum {
     XE_MAX_ERROR_MSG_LEN = 2048,
     XE_MAX_SYNC_TIMEOUT_NANOSEC = 50000000
 };
-
-typedef struct xe_mesh {
-    int base_vtx;
-    int first_idx;
-    int idx_count;
-} xe_mesh;
 
 typedef struct xe_shader_shape_data {
     lu_mat4 model;
@@ -156,7 +151,6 @@ static const int g_tex_fmt_lut_type[XE_TEX_FMT_COUNT] = {
     GL_FLOAT,
     GL_FLOAT,
 };
-
 
 static xe_gl_renderer g_r; // Depends on zero init
 
@@ -380,7 +374,7 @@ xe_gfx_init(xe_gfx_config *cfg)
     return true;
 }
 
-static xe_mesh
+xe_mesh
 xe_mesh_add(const void *vert, size_t vert_size, const void *indices, size_t indices_size)
 {
 #ifdef XE_DEBUG
@@ -409,7 +403,7 @@ xe_mesh_add(const void *vert, size_t vert_size, const void *indices, size_t indi
     return mesh;
 }
 
-static int
+int
 xe_material_add(const xe_gfx_material *mat)
 {
 #ifdef XE_DEBUG
@@ -430,11 +424,8 @@ xe_material_add(const xe_gfx_material *mat)
 }
 
 void
-xe_gfx_push(const void *vert, size_t vert_size, const void *indices, size_t indices_size, xe_gfx_material *material)
+xe_cmd_add(xe_mesh mesh, int draw_id)
 {
-    xe_mesh mesh = xe_mesh_add(vert, vert_size, indices, indices_size);
-    int draw_id = xe_material_add(material);
-
 #ifdef XE_DEBUG
     xe_gfx_sync();
 #endif
@@ -449,6 +440,14 @@ xe_gfx_push(const void *vert, size_t vert_size, const void *indices, size_t indi
         .draw_index = draw_id
     };
     g_r.drawlist.head += sizeof(xe_drawcmd);
+}
+
+void
+xe_gfx_push(const void *vert, size_t vert_size, const void *indices, size_t indices_size, xe_gfx_material *material)
+{
+    xe_mesh mesh = xe_mesh_add(vert, vert_size, indices, indices_size);
+    int draw_id = xe_material_add(material);
+    xe_cmd_add(mesh, draw_id);
 }
 
 void
@@ -505,3 +504,4 @@ xe_gfx_shutdown(void)
     glDeleteProgram(g_r.pipeline.shader.program_id);
     glDeleteVertexArrays(1, &g_r.pipeline.shader.vao_id);
 }
+

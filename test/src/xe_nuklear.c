@@ -1,9 +1,12 @@
 #include "xe_nuklear.h"
 #include <xe_scene.h>
+#include <xe_platform.h>
 #include <../src/xe_scene_internal.h>
 #include <xe_gfx.h>
+#include <../src/xe_gfx_internal.h>
 #include <llulu/lu_defs.h>
 #include <llulu/lu_error.h>
+#include <llulu/lu_math.h>
 
 #define NK_INCLUDE_FIXED_TYPES
 #define NK_INCLUDE_STANDARD_IO
@@ -16,28 +19,24 @@
 
 #include <nuklear.h>
 
+#include <limits.h>
+#include <time.h>
 
 typedef struct xe_nuklear {
     struct nk_context ctx;
     struct nk_font_atlas atlas;
+    xe_platform *plat;
     xe_image default_img;
-    struct nk_buffer cmd_buf;
-    struct nk_buffer vtx_buf;
-    struct nk_buffer idx_buf;
 } xe_nuklear;
 
 static xe_nuklear g_nuk;
 
-
-
-/*
- *  xe_gfx_vtx  -> vertex
- *
- */
-
-/* layout para nk_convert */
-void xe_nk_init(void)
+void
+xe_nk_init(struct xe_platform *plat)
 {
+    lu_err_assert(!g_nuk.plat && "Nuklear state should be uninitialized");
+    g_nuk.plat = plat;
+    nk_init_default(&g_nuk.ctx, 0);
     nk_font_atlas_init_default(&g_nuk.atlas);
     nk_font_atlas_begin(&g_nuk.atlas);
 
@@ -55,13 +54,14 @@ void xe_nk_init(void)
         nk_style_load_all_cursors(&g_nuk.ctx, &g_nuk.atlas.cursors[0]);
     }
 
-    static int32_t nuklear_default_image_data[64] = { 0xFFFFFFFF };
+    static uint32_t nuklear_default_image_data[64] = { 0xFFFFFFFF };
     g_nuk.default_img = xe_image_load_data(nuklear_default_image_data, 8, 8, 4, 0);
 }
 
-static int
-xe_nk_overview(struct nk_context *ctx)
+int
+xe_nk_overview(xe_nkctx *nk_ctx)
 {
+    struct nk_context *ctx = nk_ctx;
     /* window flags */
     static nk_bool show_menu = nk_true;
     static nk_flags window_flags = NK_WINDOW_TITLE|NK_WINDOW_BORDER|NK_WINDOW_SCALABLE|NK_WINDOW_MOVABLE|NK_WINDOW_MINIMIZABLE|NK_WINDOW_SCROLL_AUTO_HIDE;
@@ -1414,15 +1414,67 @@ xe_nk_overview(struct nk_context *ctx)
     return !nk_window_is_closed(ctx, "Overview");
 }
 
-void xe_nk_update(void)
+static inline int
+xe_nk_key(uint64_t xe_key)
 {
+    switch(xe_key) {
+        case XE_KEY_LEFT: return NK_KEY_LEFT;
+        case XE_KEY_DOWN: return NK_KEY_DOWN;
+        case XE_KEY_UP: return NK_KEY_UP;
+        case XE_KEY_RIGHT: return NK_KEY_RIGHT;
+        default: return 0;
+    }
+}
+
+static inline int
+xe_nk_button(uint64_t xe_button)
+{
+    switch(xe_button) {
+        case XE_BUTTON_MOUSE_LEFT: return NK_BUTTON_LEFT;
+        case XE_BUTTON_MOUSE_MIDDLE: return NK_BUTTON_MIDDLE;
+        case XE_BUTTON_MOUSE_RIGHT: return NK_BUTTON_RIGHT;
+        default: return 0;
+    }
+}
+
+xe_nkctx *
+xe_nk_new_frame(void)
+{
+    xe_platform *plat = g_nuk.plat;
     nk_input_begin(&g_nuk.ctx);
 
-    // input
-    
-    xe_nk_overview(&g_nuk.ctx);
+    if ((plat->keystate.mouse_x != plat->prev_keystate.mouse_x) || 
+        (plat->keystate.mouse_y != plat->prev_keystate.mouse_y)) {
 
+        nk_input_motion(&g_nuk.ctx, plat->keystate.mouse_x, plat->keystate.mouse_y);
+    }
+
+    uint64_t inputs = plat->keystate.keys ^ plat->prev_keystate.keys;
+    for (int i = 0; inputs >> i; ++i) {
+        if ((inputs >> i) & 0x1) {
+            nk_input_key(&g_nuk.ctx, xe_nk_key(i), plat->keystate.keys & (1UL << i));
+
+        }
+    }
+
+    inputs = plat->keystate.btns ^ plat->prev_keystate.btns;
+    for (int i = 0; inputs >> i; ++i) {
+        if ((inputs >> i) & 0x1) {
+            nk_input_button(&g_nuk.ctx, xe_nk_button(i),
+                            plat->keystate.mouse_x, plat->keystate.mouse_y,
+                            plat->keystate.btns & (1UL << i));
+
+        }
+    }
+    
     nk_input_end(&g_nuk.ctx);
+    nk_clear(&g_nuk.ctx);
+    return &g_nuk.ctx;
+}
+
+void
+xe_nk_render(void)
+{
 
     static const struct nk_draw_vertex_layout_element vertex_layout[] = {
         {NK_VERTEX_POSITION, NK_FORMAT_FLOAT, NK_OFFSETOF(xe_gfx_vtx, x)},
@@ -1437,8 +1489,8 @@ void xe_nk_update(void)
         .shape_AA = NK_ANTI_ALIASING_ON,
         .circle_segment_count = 22,
         .arc_segment_count = 22,
-        .curve_segment_count = 8,
-        /* tex_null */
+        .curve_segment_count = 22,
+        .tex_null = { nk_handle_id(g_nuk.default_img.id), {0, 0}},
         .vertex_layout = vertex_layout,
         .vertex_size = sizeof(xe_gfx_vtx),
         .vertex_alignment = NK_ALIGNOF(xe_gfx_vtx),
@@ -1452,28 +1504,43 @@ void xe_nk_update(void)
     nk_buffer_init_default(&idx_buf);
     nk_convert(&g_nuk.ctx, &cmd_buf, &vtx_buf, &idx_buf, &config);
 
-    lu_mat4 identity;
-    lu_mat4_identity((float*)&identity.m);
+    xe_mesh mesh = xe_mesh_add(nk_buffer_memory_const(&vtx_buf), nk_buffer_total(&vtx_buf),
+                               nk_buffer_memory_const(&idx_buf), nk_buffer_total(&idx_buf));
 
-    struct nk_draw_command *cmd = NULL;
+    int first_index = mesh.first_idx;
+    const struct nk_draw_command *cmd = NULL;
     nk_draw_foreach(cmd, &g_nuk.ctx, &cmd_buf) {
-            if (cmd->elem_count > 0) {
-                xe_gfx_material mat = (xe_gfx_material) {
-                    .model = identity,
-                    .color = LU_VEC(1.0f, 1.0f, 1.0f, 1.0f),
-                    .darkcolor = LU_VEC(1.0f, 1.0f, 1.0f, 1.0f),
-                    .tex = xe_image_ptr(*(xe_image*)&cmd->texture)->tex,
-                    .pma = 0};
-                };
-                sg_apply_scissor_rectf(cmd->clip_rect.x * dpi_scale,
-                                       cmd->clip_rect.y * dpi_scale,
-                                       cmd->clip_rect.w * dpi_scale,
-                                       cmd->clip_rect.h * dpi_scale,
-                                       true);
-                xe_gfx_push(
-                sg_draw(0, (int)cmd->elem_count, 1);
-                bindings.index_buffer_offset += (int)cmd->elem_count * (int)sizeof(uint16_t);
-            }
+        if (cmd->elem_count > 0) {
+            xe_mesh submesh = {
+                .base_vtx = mesh.base_vtx,
+                .first_idx = first_index,
+                .idx_count = cmd->elem_count
+            };
+            first_index += cmd->elem_count;
+            xe_image img = { .id = cmd->texture.id };
+            xe_gfx_material mat = (xe_gfx_material) {
+                .model = LU_MAT4_IDENTITY,
+                .color = LU_VEC(1.0f, 1.0f, 1.0f, 1.0f),
+                .darkcolor = LU_VEC(0.0f, 0.0f, 0.0f, 1.0f),
+                .tex = xe_image_ptr(img)->tex,
+                .pma = 1
+            };
+            int draw_id = xe_material_add(&mat);
+            /* TODO: Scissor cmd->clip_rect */
+            xe_cmd_add(submesh, draw_id);
         }
+    }
+
+    nk_clear(&g_nuk.ctx);
+    nk_buffer_free(&cmd_buf);
+    nk_buffer_free(&vtx_buf);
+    nk_buffer_free(&idx_buf);
+}
+
+void
+xe_nk_shutdown(void)
+{
+    nk_free(&g_nuk.ctx);
+    nk_font_atlas_clear(&g_nuk.atlas);
 }
 

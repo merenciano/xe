@@ -7,6 +7,28 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+enum {
+    XE_KEY_LEFT,
+    XE_KEY_DOWN,
+    XE_KEY_UP,
+    XE_KEY_RIGHT,
+    XE_KEY_COUNT
+};
+
+enum {
+    XE_BUTTON_MOUSE_LEFT,
+    XE_BUTTON_MOUSE_MIDDLE,
+    XE_BUTTON_MOUSE_RIGHT,
+    XE_BUTTON_COUNT
+};
+
+typedef struct xe_plat_key_state {
+    uint64_t keys; /* bit ON = XE_KEY pressed */
+    uint64_t btns; 
+    float mouse_x;
+    float mouse_y;
+} xe_plat_key_state;
+
 typedef struct xe_platform_config {
     const char *title;
     int display_w;
@@ -20,9 +42,9 @@ typedef struct xe_platform {
     xe_platform_config config;
 
     /* Inputs */
-    float mouse_x;
-    float mouse_y;
-    bool close;
+    xe_plat_key_state keystate;
+    xe_plat_key_state prev_keystate;
+    bool close; /* window close */
 
     /* Internal state */
     char window_title[1024];
@@ -56,3 +78,4 @@ int64_t xe_file_mtime(const char *path);
 bool xe_file_read(const char *path, void *buf, size_t bufsize, size_t *out_len);
 
 #endif  /* XE_PLATFORM_H */
+

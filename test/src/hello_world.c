@@ -5,6 +5,8 @@
 #include <llulu/lu_defs.h>
 #include <llulu/lu_math.h>
 
+#include "xe_nuklear.h"
+
 static const xe_gfx_vtx QUAD_VERTICES[] = {
     { .x = -1.0f, .y = -1.0f,
       .u = 0.0f, .v = 0.0f,
@@ -41,6 +43,7 @@ int main(int argc, char **argv)
         return 1;
     }
 
+
     hello_node.tex = xe_image_load("./assets/tex_test_3.png", 0);
     lu_mat4_identity((float*)&hello_node.tr);
     /* scale */
@@ -49,8 +52,11 @@ int main(int argc, char **argv)
     hello_node.tr.m[10] =  1.0f;
     hello_node.tr.m[15] =  1.0f;
 
+    xe_nk_init(plat);
+
     float deltasec = xe_platform_update();
     while(!plat->close) {
+        xe_nkctx *nk_ctx = xe_nk_new_frame();
         static float offset = 0.0f;
         /* (x, y) pos */
         hello_node.tr.m[12] = lu_sin(offset);
@@ -66,9 +72,13 @@ int main(int argc, char **argv)
             .pma = 0
         };
 
+        xe_nk_overview(nk_ctx);
+
         xe_gfx_push(QUAD_VERTICES, sizeof(QUAD_VERTICES), QUAD_INDICES, sizeof(QUAD_INDICES), &material);
+        xe_nk_render();
         deltasec = xe_platform_update();
     }
+    xe_nk_shutdown();
     xe_platform_shutdown();
 
     return 0;

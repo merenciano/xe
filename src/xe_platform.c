@@ -130,8 +130,41 @@ xe_platform_update(void)
     glfwGetFramebufferSize(win, &canvas_w, &canvas_h);
     double x, y;
     glfwGetCursorPos(win, &x, &y);
-    g_plat.mouse_x = x;
-    g_plat.mouse_y = y;
+    g_plat.prev_keystate = g_plat.keystate;
+    g_plat.keystate.mouse_x = x;
+    g_plat.keystate.mouse_y = y;
+
+    /* TODO: fancier if key count grow */
+    g_plat.keystate.keys = 0;
+    if (glfwGetKey(win, GLFW_KEY_LEFT) == GLFW_PRESS) {
+        g_plat.keystate.keys |= (1UL << XE_KEY_LEFT);
+    }
+
+    if (glfwGetKey(win, GLFW_KEY_DOWN) == GLFW_PRESS) {
+        g_plat.keystate.keys |= (1UL << XE_KEY_DOWN);
+    }
+
+    if (glfwGetKey(win, GLFW_KEY_UP) == GLFW_PRESS) {
+        g_plat.keystate.keys |= (1UL << XE_KEY_UP);
+    }
+
+    if (glfwGetKey(win, GLFW_KEY_RIGHT) == GLFW_PRESS) {
+        g_plat.keystate.keys |= (1UL << XE_KEY_RIGHT);
+    }
+
+    g_plat.keystate.btns = 0;
+    if (glfwGetMouseButton(win, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
+        g_plat.keystate.btns |= (1UL << XE_BUTTON_MOUSE_LEFT);
+    }
+
+    if (glfwGetMouseButton(win, GLFW_MOUSE_BUTTON_MIDDLE) == GLFW_PRESS) {
+        g_plat.keystate.btns |= (1UL << XE_BUTTON_MOUSE_MIDDLE);
+    }
+
+    if (glfwGetMouseButton(win, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS) {
+        g_plat.keystate.btns |= (1UL << XE_BUTTON_MOUSE_RIGHT);
+    }
+
     g_plat.close = glfwWindowShouldClose(win);
     return lu_time_sec(g_plat.delta_ns);
 }
@@ -202,3 +235,4 @@ xe_file_read(const char *path, void *buf, size_t bufsize, size_t *out_len)
     fclose(f);
     return eof;
 }
+

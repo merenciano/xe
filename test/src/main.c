@@ -40,8 +40,8 @@ static void owl_init(xe_scene_node self, void *ctx)
 static void owl_update(xe_scene_node self, void *ctx)
 {
     owl_tracks *tracks = ctx;
-    float x = plat->mouse_x / plat->config.display_w;
-    float y = plat->mouse_y / plat->config.display_h;
+    float x = plat->keystate.mouse_x / plat->config.display_w;
+    float y = plat->keystate.mouse_y / plat->config.display_h;
     tracks->left->alpha = (lu_maxf(x, 0.5f) - 0.5f) * 1.0f;
     tracks->right->alpha = (0.5f - lu_minf(x, 0.5f)) * 1.0f;
     tracks->down->alpha = (lu_maxf(y, 0.5f) - 0.5f) * 1.0f;
