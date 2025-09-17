@@ -386,27 +386,26 @@ xe_mesh_add(const void *vert, size_t vert_size, const void *indices, size_t indi
 #ifdef XE_DEBUG
     xe_gfx_sync();
 #endif
-    lu_err_expects(vert_size < (XE_VERTICES_MAP_SIZE / 3));
-    lu_err_expects(indices_size < (XE_INDICES_MAP_SIZE / 3));
-
-    xe_mesh mesh = { .idx_count = indices_size / sizeof(xe_gfx_idx)};
-
-    if ((g_r.vertices.head + vert_size) >= XE_VERTICES_MAP_SIZE) {
-        g_r.vertices.head = 0;
+    size_t vert_remaining = ((g_r.phase + 1) * XE_MAX_VERTICES * sizeof(xe_gfx_vtx)) - g_r.vertices.head;
+    size_t indices_remaining = ((g_r.phase + 1) * XE_MAX_INDICES * sizeof(xe_gfx_idx)) - g_r.indices.head;
+    bool enough_space = (vert_size <= vert_remaining) && (indices_size <= indices_remaining);
+    lu_err_assert(enough_space);
+    if (!enough_space) {
+        return (xe_mesh){ .base_vtx = 0, .first_idx = 0, .idx_count = 0 };
     }
-    mesh.base_vtx = g_r.vertices.head / sizeof(xe_gfx_vtx);
-    void *dst = (char*)g_r.vertices.data + g_r.vertices.head;
-    memcpy(dst, vert, vert_size);
+
+    xe_mesh added_mesh = { 
+        .base_vtx = g_r.vertices.head / sizeof(xe_gfx_vtx),
+        .first_idx = g_r.indices.head / sizeof(xe_gfx_idx),
+        .idx_count = indices_size / sizeof(xe_gfx_idx)
+    };
+
+    memcpy((char*)g_r.vertices.data + g_r.vertices.head, vert, vert_size);
     g_r.vertices.head += vert_size;
-
-    if ((g_r.indices.head + indices_size) >= XE_INDICES_MAP_SIZE) {
-        g_r.indices.head = 0;
-    }
-    mesh.first_idx = g_r.indices.head / sizeof(xe_gfx_idx);
-    dst = (char*)g_r.indices.data + g_r.indices.head;
-    memcpy(dst, indices, indices_size);
+    memcpy((char*)g_r.indices.data + g_r.indices.head, indices, indices_size);
     g_r.indices.head += indices_size;
-    return mesh;
+    
+    return added_mesh;
 }
 
 static int
@@ -415,8 +414,18 @@ xe_material_add(const xe_gfx_material *mat)
 #ifdef XE_DEBUG
     xe_gfx_sync();
 #endif
-    lu_err_expects(((g_r.uniforms.head - sizeof(xe_shader_data) * g_r.phase - offsetof(xe_shader_data, data)) % sizeof(xe_shader_shape_data)) == 0);
-    xe_shader_shape_data *uniform = (void*)((char*)g_r.uniforms.data + g_r.uniforms.head);
+
+    size_t remaining = ((g_r.phase + 1) * sizeof(xe_shader_data)) - g_r.uniforms.head;
+    bool enough_space = sizeof(xe_shader_shape_data) <= remaining;
+    lu_err_assert(enough_space);
+    if (!enough_space) {
+        return -1;
+    }
+
+    int idx = (g_r.uniforms.head - g_r.phase * sizeof(xe_shader_data) - offsetof(xe_shader_data, data))
+                / sizeof(xe_shader_shape_data);
+
+    xe_shader_shape_data *uniform = &((xe_shader_data*)g_r.uniforms.data + g_r.phase)->data[idx];
     uniform->model = mat->model;
     uniform->color = mat->color;
     uniform->darkcolor = mat->darkcolor;
@@ -424,22 +433,27 @@ xe_material_add(const xe_gfx_material *mat)
     uniform->albedo_layer = (float)mat->tex.layer;
     uniform->pma = mat->pma;
 
-    int idx = (g_r.uniforms.head - g_r.phase * sizeof(xe_shader_data) - offsetof(xe_shader_data, data)) / sizeof(xe_shader_shape_data);
     g_r.uniforms.head += sizeof(xe_shader_shape_data);
+    
     return idx;
 }
 
 void
 xe_gfx_push(const void *vert, size_t vert_size, const void *indices, size_t indices_size, xe_gfx_material *material)
 {
+    size_t remaining = (g_r.phase + 1) * XE_MAX_DRAW_INDIRECT * sizeof(xe_drawcmd) - g_r.drawlist.head;
+    bool enough_space = remaining >= sizeof(xe_drawcmd);
+    lu_err_assert(enough_space);
+    if (!enough_space) {
+        return;
+    }
+
     xe_mesh mesh = xe_mesh_add(vert, vert_size, indices, indices_size);
     int draw_id = xe_material_add(material);
 
 #ifdef XE_DEBUG
     xe_gfx_sync();
 #endif
-    size_t frame_start = g_r.phase * (XE_DRAW_INDIRECT_MAP_SIZE / 3);
-    lu_err_expects(g_r.drawlist.head - frame_start < XE_DRAW_INDIRECT_MAP_SIZE / 3);
 
     *((xe_drawcmd*)((char*)g_r.drawlist.data + g_r.drawlist.head)) = (xe_drawcmd){
         .element_count = mesh.idx_count,
