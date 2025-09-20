@@ -73,15 +73,13 @@ static void node3_update(xe_scene_node self, void *data)
 
 int main(int argc, char **argv)
 {
-    plat = xe_platform_create(&(xe_platform_config){
-        .title = "XE TEST",
-        .display_w = 1200,
-        .display_h = 900,
-        .vsync = false,
-        .log_filename = ""
-    });
-
-    if (!plat) {
+    xe_platform plat;
+    if (!xe_platform_init(&plat, &(xe_platform_config){
+            .title = "XE TEST",
+            .display_w = 1200,
+            .display_h = 900,
+            .vsync = false,
+            .log_filename = "" })) {
         return 1;
     }
 
@@ -107,7 +105,7 @@ int main(int argc, char **argv)
     owl_init(owl, &owltracks);
 
     int64_t elapsed = lu_time_elapsed(timer);
-    plat->timers_data.img_load = elapsed;
+    plat.timers_data.img_load = elapsed;
     timer = lu_time_get();
 
     xe_scene_node nodes[4];
@@ -132,12 +130,12 @@ int main(int argc, char **argv)
     xe_scene_register_node_update(nodes[3], NULL, node3_update);
 
     elapsed = lu_time_elapsed(timer);
-    plat->timers_data.scene_load = elapsed;
+    plat.timers_data.scene_load = elapsed;
 
-    plat->timers_data.init_time = lu_time_elapsed(plat->begin_timestamp);
+    plat.timers_data.init_time = lu_time_elapsed(plat.begin_timestamp);
     deltasec = xe_platform_update();
 
-    while(!plat->close) {
+    while(!plat.close) {
         /* Systems */
         xe_spine_animation_pass(deltasec);
         xe_scene_update_world();
@@ -152,3 +150,4 @@ int main(int argc, char **argv)
 
     return 0;
 }
+

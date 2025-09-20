@@ -1,4 +1,5 @@
 #include "xe_gfx.h"
+#include "xe_gfx_helpers.h"
 #include "xe_platform.h"
 
 #include <llulu/lu_time.h>
@@ -65,6 +66,13 @@ typedef struct xe_drawcmd {
     uint32_t draw_index; // base_instance
 } xe_drawcmd;
 
+enum {
+    XE_VERTICES_MAP_SIZE = XE_MAX_VERTICES * 3 * sizeof(xe_gfx_vtx),
+    XE_INDICES_MAP_SIZE = XE_MAX_INDICES * 3 * sizeof(xe_gfx_idx),
+    XE_UNIFORMS_MAP_SIZE = 3 * sizeof(xe_shader_data),
+    XE_DRAW_INDIRECT_MAP_SIZE = XE_MAX_DRAW_INDIRECT * 3 * sizeof(xe_drawcmd),
+};
+
 /* Persistent mapped video buffer */
 enum {
     XE_VBUF_MAP_FLAGS = GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT,
@@ -86,7 +94,6 @@ typedef struct xe_shader {
 
 typedef struct xe_pipeline {
     xe_shader shader;
-    xe_gfx_canvas target;
 } xe_pipeline;
 
 typedef struct xe_gl_renderer {
@@ -94,68 +101,15 @@ typedef struct xe_gl_renderer {
     int phase; /* for the triphassic fence */
     GLsync fence[3];
     lu_mat4 view_proj; // TODO: move to scene
-
     xe_pipeline pipeline;
+
     xe_vbuf vertices;
     xe_vbuf indices;
     xe_vbuf uniforms;
     xe_vbuf drawlist;
+
+    xe_gfx_renderpass rpass;
 } xe_gl_renderer;
-
-enum {
-    XE_VERTICES_MAP_SIZE = XE_MAX_VERTICES * 3 * sizeof(xe_gfx_vtx),
-    XE_INDICES_MAP_SIZE = XE_MAX_INDICES * 3 * sizeof(xe_gfx_idx),
-    XE_UNIFORMS_MAP_SIZE = 3 * sizeof(xe_shader_data),
-    XE_DRAW_INDIRECT_MAP_SIZE = XE_MAX_DRAW_INDIRECT * 3 * sizeof(xe_drawcmd),
-};
-
-static const int g_tex_fmt_lut_internal[XE_TEX_FMT_COUNT] = {
-    GL_R8,
-    GL_RG8,
-    GL_RGB8,
-    GL_SRGB8,
-    GL_RGBA8,
-    GL_R16F,
-    GL_RG16F,
-    GL_RGB16F,
-    GL_RGBA16F,
-    GL_R32F,
-    GL_RG32F,
-    GL_RGB32F,
-    GL_RGBA32F,
-};
-
-static const int g_tex_fmt_lut_format[XE_TEX_FMT_COUNT] = {
-    GL_RED,
-    GL_RG,
-    GL_RGB,
-    GL_RGB,
-    GL_RGBA,
-    GL_RED,
-    GL_RG,
-    GL_RGB,
-    GL_RGBA,
-    GL_RED,
-    GL_RG,
-    GL_RGB,
-    GL_RGBA,
-};
-
-static const int g_tex_fmt_lut_type[XE_TEX_FMT_COUNT] = {
-    GL_UNSIGNED_BYTE,
-    GL_UNSIGNED_BYTE,
-    GL_UNSIGNED_BYTE,
-    GL_UNSIGNED_BYTE,
-    GL_UNSIGNED_BYTE,
-    GL_HALF_FLOAT,
-    GL_HALF_FLOAT,
-    GL_HALF_FLOAT,
-    GL_HALF_FLOAT,
-    GL_FLOAT,
-    GL_FLOAT,
-    GL_FLOAT,
-    GL_FLOAT,
-};
 
 
 static xe_gl_renderer g_r; // Depends on zero init
@@ -257,7 +211,7 @@ xe_shader_gpu_setup(void)
     float view[16];
     float proj[16];
     lu_mat4_look_at(view, (float[]){0.0f, 0.0f, 2.0f}, (float[]){0.0f, 0.0f, 0.0f}, (float[]){0.0f, 1.0f, 0.0f});
-    lu_mat4_perspective_fov(proj, lu_radians(70.0f), (float)g_r.pipeline.target.w, (float)g_r.pipeline.target.h, 0.1f, 300.0f);
+    lu_mat4_perspective_fov(proj, lu_radians(70.0f), 1920.0f, 1080.0f, 0.1f, 300.0f);
     lu_mat4_multiply(g_r.view_proj.m, proj, view);
 
     g_r.pipeline.shader.program_id = glCreateProgram();
@@ -321,19 +275,27 @@ xe_gfx_init(xe_gfx_config *cfg)
         g_r.fence[i] = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
     }
 
-    g_r.pipeline.target.w = cfg->canvas.w;
-    g_r.pipeline.target.h = cfg->canvas.h;
     g_r.pipeline.shader.vert_path = cfg->vert_shader_path;
     g_r.pipeline.shader.frag_path = cfg->frag_shader_path;
 
-    glEnable(GL_MULTISAMPLE);
-    glDisable(GL_DEPTH_TEST);
-    glDisable(GL_CULL_FACE);
-    glDisable(GL_STENCIL_TEST);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA); // Using premultiplied alpha
+    uint32_t flags = cfg->default_ops.enabled_flags;
+    GLenum bsrc = xe__get_gl_blend_fn(cfg->default_ops.blend_src_fn);
+    GLenum bdst = xe__get_gl_blend_fn(cfg->default_ops.blend_dst_fn);
+    GLenum cull = xe__get_gl_cull(cfg->default_ops.cull_faces);
+    GLenum depthfn = xe__get_gl_depth_fn(cfg->default_ops.depth_fn);
+
+    if (flags) {
+        flags & XE_OP_BLEND ? glEnable(GL_BLEND), glBlendFunc(bsrc, bdst) : glDisable(GL_BLEND);
+        flags & XE_OP_CULL ? glEnable(GL_CULL_FACE), glCullFace(cull) : glDisable(GL_CULL_FACE);
+        flags & XE_OP_SCISSOR ? glEnable(GL_SCISSOR_TEST) : glDisable(GL_SCISSOR_TEST);
+        flags & XE_OP_DEPTH_TEST ? glEnable(GL_DEPTH_TEST), glDepthFunc(depthfn) : glDisable(GL_DEPTH_TEST);
+        flags & XE_OP_STENCIL_TEST ? glEnable(GL_STENCIL_TEST) : glDisable(GL_STENCIL_TEST);
+        flags & XE_OP_DEPTH_MASK ? glDepthMask(GL_TRUE) : glDepthMask(GL_FALSE);
+        flags & XE_OP_STENCIL_MASK ? glStencilMask(GL_TRUE) : glStencilMask(GL_FALSE);
+    }
+
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-    glViewport(0, 0, g_r.pipeline.target.w, g_r.pipeline.target.h);
+    //glViewport(0, 0, g_r.pipeline.target.w, g_r.pipeline.target.h);
 
     /* Persistent mapped buffers for vertices, indices uniforms and indirect draw commands. */
     GLuint buf_id[4];
@@ -347,6 +309,7 @@ xe_gfx_init(xe_gfx_config *cfg)
     g_r.uniforms.id = buf_id[2];
     glNamedBufferStorage(g_r.uniforms.id, XE_UNIFORMS_MAP_SIZE, NULL, XE_VBUF_STORAGE_FLAGS);
     g_r.uniforms.data = glMapNamedBufferRange(g_r.uniforms.id, 0, XE_UNIFORMS_MAP_SIZE, XE_VBUF_MAP_FLAGS);
+    g_r.uniforms.head = offsetof(xe_shader_data, data);
     g_r.drawlist.id = buf_id[3];
     glBindBuffer(GL_DRAW_INDIRECT_BUFFER, g_r.drawlist.id);
     glNamedBufferStorage(g_r.drawlist.id, XE_DRAW_INDIRECT_MAP_SIZE, NULL, XE_VBUF_STORAGE_FLAGS);
@@ -378,6 +341,12 @@ xe_gfx_init(xe_gfx_config *cfg)
     glBindTextures(0, XE_MAX_TEXTURE_ARRAYS, g_r.tex.id);
 
     return true;
+}
+
+static void
+xe_rops_set(uint32_t disable_ops, xe_gfx_rops enable_ops)
+{
+    
 }
 
 static xe_mesh
@@ -451,10 +420,6 @@ xe_gfx_push(const void *vert, size_t vert_size, const void *indices, size_t indi
     xe_mesh mesh = xe_mesh_add(vert, vert_size, indices, indices_size);
     int draw_id = xe_material_add(material);
 
-#ifdef XE_DEBUG
-    xe_gfx_sync();
-#endif
-
     *((xe_drawcmd*)((char*)g_r.drawlist.data + g_r.drawlist.head)) = (xe_drawcmd){
         .element_count = mesh.idx_count,
         .instance_count = 1,
@@ -466,16 +431,16 @@ xe_gfx_push(const void *vert, size_t vert_size, const void *indices, size_t indi
 }
 
 void
-xe_gfx_render(void)
+xe_gfx_render(int viewport_width, int viewport_height)
 {
     lu_hook_notify(LU_HOOK_PRE_RENDER, &g_r);
 
     {
         static int last_w, last_h;
-        if (last_w != g_r.pipeline.target.w || last_h != g_r.pipeline.target.h) {
-            glViewport(0, 0, g_r.pipeline.target.w, g_r.pipeline.target.h);
-            last_w = g_r.pipeline.target.w;
-            last_h = g_r.pipeline.target.h;
+        if (last_w != viewport_width || last_h != viewport_height) {
+            glViewport(0, 0, viewport_width, viewport_height);
+            last_w = viewport_width;
+            last_h = viewport_height;
         }
     }
 
@@ -485,17 +450,30 @@ xe_gfx_render(void)
 
     glClear(GL_COLOR_BUFFER_BIT);
 
-    size_t offset = (g_r.phase * (XE_DRAW_INDIRECT_MAP_SIZE / 3));
-    size_t cmdbuf_size = g_r.drawlist.head - offset;
-    lu_err_assert(cmdbuf_size < (XE_DRAW_INDIRECT_MAP_SIZE / 3) && "The draw command list is larger than a third of the mapped buffer.");
-    size_t cmdbuf_count = cmdbuf_size / sizeof(xe_drawcmd);
-    lu_err_assert(cmdbuf_count < XE_MAX_DRAW_INDIRECT);
-    glMultiDrawElementsIndirect(GL_TRIANGLES, sizeof(xe_gfx_idx) == 4 ? GL_UNSIGNED_INT : GL_UNSIGNED_SHORT, (void*)offset, cmdbuf_count, 0);
+    ptrdiff_t frame_start = g_r.phase * XE_MAX_DRAW_INDIRECT * sizeof(xe_drawcmd);
+    ptrdiff_t cmd_count = (g_r.drawlist.head - frame_start) / sizeof(xe_drawcmd);
+    lu_err_assert(((g_r.drawlist.head - frame_start) % sizeof(xe_drawcmd)) == 0);
+    lu_err_assert(cmd_count <= XE_MAX_DRAW_INDIRECT && "The draw list is larger than the buffer.");
+    glMultiDrawElementsIndirect(
+            GL_TRIANGLES,
+            sizeof(xe_gfx_idx) == 4 ? GL_UNSIGNED_INT : GL_UNSIGNED_SHORT,
+            (void*)frame_start,
+            cmd_count, 0);
+
+#if 1
+    lu_log("\ncmd count: %ld\nvtx count: %ld\nidx count: %ld\n",
+            cmd_count,
+            (g_r.vertices.head / sizeof(xe_gfx_vtx)) % XE_MAX_VERTICES,
+            (g_r.indices.head / sizeof(xe_gfx_idx)) % XE_MAX_INDICES);
+#endif
 
     g_r.fence[g_r.phase] = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
     g_r.phase = (g_r.phase + 1) % 3;
     g_r.uniforms.head = g_r.phase * sizeof(xe_shader_data) + offsetof(xe_shader_data, data);
-    g_r.drawlist.head = g_r.phase * (XE_DRAW_INDIRECT_MAP_SIZE / 3);
+    g_r.drawlist.head = g_r.phase * XE_MAX_DRAW_INDIRECT * sizeof(xe_drawcmd);
+    g_r.vertices.head = g_r.phase * XE_MAX_VERTICES * sizeof(xe_gfx_vtx);
+    g_r.indices.head = g_r.phase * XE_MAX_INDICES * sizeof(xe_gfx_idx);
+
     lu_hook_notify(LU_HOOK_POST_RENDER, &g_r);
 }
 
@@ -519,3 +497,4 @@ xe_gfx_shutdown(void)
     glDeleteProgram(g_r.pipeline.shader.program_id);
     glDeleteVertexArrays(1, &g_r.pipeline.shader.vao_id);
 }
+

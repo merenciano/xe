@@ -18,17 +18,23 @@ typedef struct xe_platform {
     const char *name;
     xe_platform_config config;
 
-    /* Inputs */
+    /* Inputs (read only) */
+    int window_w; /* screen coords */
+    int window_h;
+    int viewport_w; /* pixels */
+    int viewport_h;
+    bool close;
+
     float mouse_x;
     float mouse_y;
-    bool close;
 
     /* Internal state */
     char window_title[1024];
     void *window;
     void *log_stream;
-    bool initialized;
+    void *(*gl_loader)(const char *);
 
+    /* Metrics */
     lu_timestamp begin_timestamp;
     lu_timestamp frame_timestamp;
     int64_t delta_ns;
@@ -47,7 +53,7 @@ typedef struct xe_platform {
     } timers_data;
 } xe_platform;
 
-xe_platform *xe_platform_create(xe_platform_config *config);
+bool xe_platform_init(xe_platform *plat, xe_platform_config *config);
 float xe_platform_update(void);
 void xe_platform_shutdown(void);
 
@@ -55,3 +61,4 @@ int64_t xe_file_mtime(const char *path);
 bool xe_file_read(const char *path, void *buf, size_t bufsize, size_t *out_len);
 
 #endif  /* XE_PLATFORM_H */
+
