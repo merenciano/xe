@@ -9,6 +9,7 @@
 #include <spine/spine.h>
 
 #include <stdbool.h>
+#include <stdio.h>
 
 xe_platform *plat = NULL;
 
@@ -73,13 +74,30 @@ static void node3_update(xe_scene_node self, void *data)
 
 int main(int argc, char **argv)
 {
-    xe_platform plat;
-    if (!xe_platform_init(&plat, &(xe_platform_config){
+    xe_platform platform;
+    plat = &platform;
+    if (!xe_platform_init(&platform, &(xe_platform_config){
             .title = "XE TEST",
             .display_w = 1200,
             .display_h = 900,
-            .vsync = false,
+            .vsync = true,
             .log_filename = "" })) {
+        return 1;
+    }
+
+    if (!xe_gfx_init(&((xe_gfx_config) {
+        .gl_loader = platform.gl_loader,
+        .vert_shader_path = "./assets/vert.glsl",
+        .frag_shader_path = "./assets/frag.glsl",
+        .default_ops = {
+            .enabled_flags = XE_OP_BLEND,
+            .blend_src_fn = XE_BLEND_ONE,
+            .blend_dst_fn = XE_BLEND_ONE_MINUS_SRC_ALPHA,
+            .depth_fn = XE_DEPTH_NOOP,
+            .cull_faces = XE_CULL_NOOP,
+            .clip = {0, 0, 0, 0}
+    }}))) {
+        printf("Can not init graphics module.\n");
         return 1;
     }
 
@@ -105,7 +123,7 @@ int main(int argc, char **argv)
     owl_init(owl, &owltracks);
 
     int64_t elapsed = lu_time_elapsed(timer);
-    plat.timers_data.img_load = elapsed;
+    platform.timers_data.img_load = elapsed;
     timer = lu_time_get();
 
     xe_scene_node nodes[4];
@@ -130,12 +148,12 @@ int main(int argc, char **argv)
     xe_scene_register_node_update(nodes[3], NULL, node3_update);
 
     elapsed = lu_time_elapsed(timer);
-    plat.timers_data.scene_load = elapsed;
+    platform.timers_data.scene_load = elapsed;
 
-    plat.timers_data.init_time = lu_time_elapsed(plat.begin_timestamp);
+    platform.timers_data.init_time = lu_time_elapsed(platform.begin_timestamp);
     deltasec = xe_platform_update();
 
-    while(!plat.close) {
+    while(!platform.close) {
         /* Systems */
         xe_spine_animation_pass(deltasec);
         xe_scene_update_world();
@@ -143,6 +161,7 @@ int main(int argc, char **argv)
         xe_scene_drawable_draw_pass();
         xe_spine_draw_pass();
 
+        xe_gfx_render(platform.viewport_w, platform.viewport_h);
         deltasec = xe_platform_update();
     }
 

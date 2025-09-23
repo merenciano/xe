@@ -10,7 +10,7 @@ struct ShapeData {
     int albedo_idx;
     float albedo_layer;
     float pma;
-    float pad1;
+    int dark_is_clip;
 };
 
 layout(std140, binding=0) uniform u_data {
@@ -29,5 +29,21 @@ void main()
     v_out.color = a_color;
     v_out.uv = a_uv;
     v_out.shape_idx = gl_BaseInstance;
+
     gl_Position = vp * shape[gl_BaseInstance].model * vec4(a_pos, 0.0, 1.0);
+
+    if (shape[gl_BaseInstance].dark_is_clip == 1) {
+        vec2 ndc = (gl_Position.xy / gl_Position.w);
+        vec4 r = shape[gl_BaseInstance].darkcolor;
+        float left = ndc.x - r.x;
+        float right = r.z - ndc.x;
+        float bottom = ndc.y - r.y;
+        float up = r.w - ndc.y;
+
+        gl_ClipDistance[0] = left;
+        gl_ClipDistance[1] = right;
+        gl_ClipDistance[2] = bottom;
+        gl_ClipDistance[3] = up;
+    }
 }
+
