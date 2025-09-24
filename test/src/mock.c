@@ -39,12 +39,14 @@ struct xe_stroke_data {
     struct xe_palette_swatch swatch;
 };
 
-xe_brush_ref xe_brush_draw_begin(xe_palette_ref, xe_canvas_ref);
-void xe_brush_cover(xe_brush_ref, lu_color);
-void xe_brush_set_ruler(xe_brush_ref, lu_rect);
-void xe_brush_thicken(xe_brush_ref);
-void xe_brush_dilute(xe_brush_ref, uint32_t blend_flags);
-void xe_brush_paint(xe_brush_ref, struct xe_stroke_data);
+xe_brush_ref xe_brush_draw_begin(xe_palette_ref, xe_canvas_ref); /* use pipeline and set target framebuffer */
+void xe_brush_cover(xe_brush_ref, lu_color); /* clear */
+void xe_brush_set_ruler(xe_brush_ref, lu_rect); /* scissor */
+void xe_brush_thicken(xe_brush_ref); /* disable blend i.e. solid */
+void xe_brush_dilute(xe_brush_ref, uint32_t blend_flags);   /* mix, multiply, add */
+void xe_brush_set_charcoal(xe_brush_ref, uint32_t charcoal_flags); /* depth: read, write, test_func */
+void xe_brush_paint(xe_brush_ref, struct xe_stroke_data); /* drawcommand */
+void xe_brush_draw_end(xe_brush_ref);
 
 typedef int xe_stroke; // drawcmd
 
