@@ -11,7 +11,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 
-xe_platform *plat = NULL;
+static xe_platform platform;
 
 typedef struct {
     spTrackEntry *left;
@@ -41,8 +41,8 @@ static void owl_init(xe_scene_node self, void *ctx)
 static void owl_update(xe_scene_node self, void *ctx)
 {
     owl_tracks *tracks = ctx;
-    float x = plat->mouse_x / plat->config.display_w;
-    float y = plat->mouse_y / plat->config.display_h;
+    float x = platform.mouse_x / (float)platform.window_w;
+    float y = platform.mouse_y / (float)platform.window_h;
     tracks->left->alpha = (lu_maxf(x, 0.5f) - 0.5f) * 1.0f;
     tracks->right->alpha = (0.5f - lu_minf(x, 0.5f)) * 1.0f;
     tracks->down->alpha = (lu_maxf(y, 0.5f) - 0.5f) * 1.0f;
@@ -67,15 +67,13 @@ static void node2_update(xe_scene_node self, void *data)
 static void node3_update(xe_scene_node self, void *data)
 {
     (void)data;
-    float curr_time_sec = lu_time_sec(lu_time_elapsed(plat->begin_timestamp));
+    float curr_time_sec = lu_time_sec(lu_time_elapsed(platform.begin_timestamp));
     xe_transform_set_scale(self, (2.0f + lu_sin(curr_time_sec * 2.0f)) * 0.5f, (2.0f + lu_cos(curr_time_sec * 2.0f)) * 0.5f, 1.0f);
     xe_transform_set_pos(self, 18.0f * lu_sin(curr_time_sec * 0.7f), 13.0f, -20.0f);
 }
 
 int main(int argc, char **argv)
 {
-    xe_platform platform;
-    plat = &platform;
     if (!xe_platform_init(&platform, &(xe_platform_config){
             .title = "XE TEST",
             .display_w = 1200,
@@ -190,4 +188,3 @@ int main(int argc, char **argv)
 
     return 0;
 }
-

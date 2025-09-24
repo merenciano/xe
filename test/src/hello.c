@@ -47,20 +47,14 @@ int main()
         return 1;
     }
 
-    if (!xe_gfx_init(&((xe_gfx_config) {
+    if (!xe_gfx_init(&(xe_gfx_config) {
             .gl_loader = g_platform.gl_loader,
             .vert_shader_path = "./assets/vert.glsl",
             .frag_shader_path = "./assets/frag.glsl",
-            .default_ops = {
-                .clip = {0, 0, 0, 0},
-                .blend_src = XE_BLEND_ONE,
-                .blend_dst = XE_BLEND_ONE_MINUS_SRC_ALPHA,
-                .depth = XE_DEPTH_DISABLED,
-                .cull = XE_CULL_NONE
-            },
-            .background_color = { .r = 1.0f, .g = 0.0f, .b = 0.0f, .a = 1.0f },
+            .default_ops = xe_gfx_rops_default(XE_ROPS_DEFAULT_BLEND),
+            .background_color = { .r = 0.02f, .g = 0.01f, .b = 0.04f, .a = 1.0f },
             .viewport = { .x = 0, .y = 0, g_platform.viewport_w, g_platform.viewport_h }
-        }))) {
+        })) {
         printf("Can not init graphics module.\n");
         return 1;
     }

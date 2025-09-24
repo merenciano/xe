@@ -10,6 +10,8 @@
  * Pipelines as resource (like images)
  */
 
+
+/* Configurable: uint16_t or uint32_t */
 typedef uint16_t xe_gfx_idx;
 
 typedef struct xe_gfx_vtx {
@@ -84,12 +86,6 @@ enum xe_gfx_depth_func {
     XE_DEPTH_COUNT
 };
 
-enum xe_gfx_clear_flags {
-    XE_CLEAR_COLOR = 0x01,
-    XE_CLEAR_DEPTH = 0x02,
-    XE_CLEAR_STENCIL = 0x04
-};
-
 typedef struct xe_gfx_rops {
     lu_rect clip;
     uint8_t blend_src;
@@ -97,6 +93,28 @@ typedef struct xe_gfx_rops {
     uint8_t depth;
     uint8_t cull;
 } xe_gfx_rops;
+
+enum xe_gfx_rops_default_type_flags {
+    XE_ROPS_DEFAULT_DEPTH = 0x01, /* Enable depth test with less func */
+    XE_ROPS_DEFAULT_BLEND = 0x02, /* Enable blend mix (one, one_minus_src_alpha) */
+    XE_ROPS_DEFAULT_CULL  = 0x04, /* Enable backface culling */
+};
+
+static inline xe_gfx_rops
+xe_gfx_rops_default(int flags) /* XE_ROPS_DEFAULT_..., see: enum xe_gfx_rops_default_type_flags */ 
+{
+    return (xe_gfx_rops){
+        .clip = {0, 0, 0, 0},
+        .blend_src = flags & XE_ROPS_DEFAULT_BLEND ?
+            XE_BLEND_ONE : XE_BLEND_DISABLED,
+        .blend_dst = flags & XE_ROPS_DEFAULT_BLEND ?
+            XE_BLEND_ONE_MINUS_SRC_ALPHA : XE_BLEND_DISABLED,
+        .depth = flags & XE_ROPS_DEFAULT_DEPTH ?
+            XE_DEPTH_LESS : XE_DEPTH_DISABLED,
+        .cull = flags & XE_ROPS_DEFAULT_CULL ?
+            XE_CULL_BACK : XE_CULL_NONE
+    };
+}
 
 typedef struct xe_gfx_draw_batch {
     ptrdiff_t start_offset; /* in draw units */
