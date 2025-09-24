@@ -90,13 +90,15 @@ int main(int argc, char **argv)
         .vert_shader_path = "./assets/vert.glsl",
         .frag_shader_path = "./assets/frag.glsl",
         .default_ops = {
-            .enabled_flags = XE_OP_BLEND,
-            .blend_src_fn = XE_BLEND_ONE,
-            .blend_dst_fn = XE_BLEND_ONE_MINUS_SRC_ALPHA,
-            .depth_fn = XE_DEPTH_NOOP,
-            .cull_faces = XE_CULL_NOOP,
-            .clip = {0, 0, 0, 0}
-    }}))) {
+            .clip = {0, 0, 0, 0},
+            .blend_src = XE_BLEND_ONE,
+            .blend_dst = XE_BLEND_ONE_MINUS_SRC_ALPHA,
+            .depth = XE_DEPTH_DISABLED,
+            .cull = XE_CULL_NONE
+        },
+        .background_color = { .r = 1.0f, .g = 0.0f, .b = 0.0f, .a = 1.0f },
+        .viewport = { .x = 0, .y = 0, platform.viewport_w, platform.viewport_h }
+    }))) {
         printf("Can not init graphics module.\n");
         return 1;
     }
@@ -154,14 +156,33 @@ int main(int argc, char **argv)
     deltasec = xe_platform_update();
 
     while(!platform.close) {
+        xe_gfx_pass_begin(
+            (lu_rect){0, 0, platform.viewport_w, platform.viewport_h},
+            (lu_color){ 0.1f, 0.07f, 0.1f, 1.0f},
+            true, true, false,
+            (xe_gfx_rops){ 
+                .clip = {0,0,0,0},
+                .blend_src = XE_BLEND_DISABLED,
+                .blend_dst = XE_BLEND_DISABLED,
+                .depth = XE_DEPTH_DISABLED,
+                .cull = XE_CULL_NONE
+            }
+        );
+
         /* Systems */
         xe_spine_animation_pass(deltasec);
         xe_scene_update_world();
         xe_gfx_sync();
         xe_scene_drawable_draw_pass();
+        xe_gfx_rops_set((xe_gfx_rops) {
+                .clip = {0,0,0,0},
+                .blend_src = XE_BLEND_ONE,
+                .blend_dst = XE_BLEND_ONE_MINUS_SRC_ALPHA,
+                .depth = XE_DEPTH_UNSET,
+                .cull = XE_CULL_UNSET });
         xe_spine_draw_pass();
 
-        xe_gfx_render(platform.viewport_w, platform.viewport_h);
+        xe_gfx_render();
         deltasec = xe_platform_update();
     }
 

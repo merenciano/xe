@@ -25,7 +25,14 @@ static const xe_gfx_vtx QUAD_VERTICES[] = {
 };
 
 static const xe_gfx_idx QUAD_INDICES[] = { 0, 1, 2, 0, 2, 3 };
-static xe_gfx_material QUAD_MATERIAL = { .model = LU_MAT4_IDENTITY, .color = LU_VEC(1,1,1,1), .darkcolor = LU_VEC4_ZERO, .pma = 0.0f };
+
+static xe_gfx_material QUAD_MATERIAL = {
+    .model = LU_MAT4_IDENTITY,
+    .color = LU_VEC(1,1,1,1),
+    .darkcolor = LU_VEC4_ZERO,
+    .pma = 0.0f
+};
+
 static xe_platform g_platform;
 
 int main()
@@ -46,13 +53,15 @@ int main()
             .vert_shader_path = "./assets/vert.glsl",
             .frag_shader_path = "./assets/frag.glsl",
             .default_ops = {
-                .enabled_flags = XE_OP_BLEND,
-                .blend_src_fn = XE_BLEND_ONE,
-                .blend_dst_fn = XE_BLEND_ONE_MINUS_SRC_ALPHA,
-                .depth_fn = XE_DEPTH_NOOP,
-                .cull_faces = XE_CULL_NOOP,
-                .clip = {0, 0, 0, 0}
-            }}))) {
+                .clip = {0, 0, 0, 0},
+                .blend_src = XE_BLEND_ONE,
+                .blend_dst = XE_BLEND_ONE_MINUS_SRC_ALPHA,
+                .depth = XE_DEPTH_DISABLED,
+                .cull = XE_CULL_NONE
+            },
+            .background_color = { .r = 1.0f, .g = 0.0f, .b = 0.0f, .a = 1.0f },
+            .viewport = { .x = 0, .y = 0, g_platform.viewport_w, g_platform.viewport_h }
+        }))) {
         printf("Can not init graphics module.\n");
         return 1;
     }
@@ -64,11 +73,23 @@ int main()
 
     xe_platform_update();
     while (!g_platform.close) {
+        xe_gfx_pass_begin(
+            (lu_rect){0, 0, g_platform.viewport_w, g_platform.viewport_h},
+            (lu_color){ 1.0f, 0.0f, 0.0f, 1.0f},
+            true, true, false,
+            (xe_gfx_rops){ 
+                .clip = {0,0,0,0},
+                .blend_src = XE_BLEND_UNSET,
+                .blend_dst = XE_BLEND_UNSET, 
+                .depth = XE_DEPTH_UNSET,
+                .cull = XE_CULL_UNSET
+            }
+        );
         xe_gfx_push(QUAD_VERTICES, sizeof(QUAD_VERTICES),
                     QUAD_INDICES, sizeof(QUAD_INDICES),
                     &QUAD_MATERIAL);
 
-        xe_gfx_render(g_platform.viewport_w, g_platform.viewport_h);
+        xe_gfx_render();
         xe_platform_update();
     }
 

@@ -5,6 +5,7 @@ set_target_properties(xet PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR
 target_sources(xet PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/main.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/xe_spine.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/xe_spine.h
 )
 
 target_include_directories(xet PRIVATE

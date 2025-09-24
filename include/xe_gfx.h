@@ -57,19 +57,9 @@ typedef struct xe_gfx_material {
     float pma;
 } xe_gfx_material;
 
-enum xe_gfx_op_flags {
-    XE_OP_DEPTH_TEST   = 0x0001,
-    XE_OP_STENCIL_TEST = 0x0002,
-    XE_OP_DEPTH_MASK   = 0x0004,
-    XE_OP_STENCIL_MASK = 0x0008,
-    XE_OP_BLEND        = 0x0010,
-    XE_OP_CULL         = 0x0020,
-    XE_OP_SCISSOR      = 0x0040,
-    XE_OP_MULTISAMPLE  = 0x0080
-};
-
 enum xe_gfx_blend_func {
-    XE_BLEND_NOOP,
+    XE_BLEND_UNSET,
+    XE_BLEND_DISABLED,
     XE_BLEND_ONE,
     XE_BLEND_SRC_ALPHA,
     XE_BLEND_ONE_MINUS_SRC_ALPHA,
@@ -78,7 +68,8 @@ enum xe_gfx_blend_func {
 };
 
 enum xe_gfx_cull_face {
-    XE_CULL_NOOP,
+    XE_CULL_UNSET,
+    XE_CULL_NONE,
     XE_CULL_FRONT,
     XE_CULL_BACK,
     XE_CULL_FRONT_AND_BACK,
@@ -86,7 +77,8 @@ enum xe_gfx_cull_face {
 };
 
 enum xe_gfx_depth_func {
-    XE_DEPTH_NOOP,
+    XE_DEPTH_UNSET,
+    XE_DEPTH_DISABLED,
     XE_DEPTH_LEQUAL,
     XE_DEPTH_LESS,
     XE_DEPTH_COUNT
@@ -99,31 +91,28 @@ enum xe_gfx_clear_flags {
 };
 
 typedef struct xe_gfx_rops {
-    uint32_t enabled_flags;
-    uint8_t blend_src_fn;
-    uint8_t blend_dst_fn;
-    uint8_t depth_fn;
-    uint8_t cull_faces;
     lu_rect clip;
+    uint8_t blend_src;
+    uint8_t blend_dst;
+    uint8_t depth;
+    uint8_t cull;
 } xe_gfx_rops;
 
 typedef struct xe_gfx_draw_batch {
-    uint16_t start_offset; /* in draw units */
-    uint16_t batch_size;   /* in draw units */
+    ptrdiff_t start_offset; /* in draw units */
+    size_t batch_size;   /* in draw units */
     xe_gfx_rops rops;
 } xe_gfx_draw_batch;
-
-typedef struct xe_gfx_renderpass_desc {
-    
-} xe_gfx_renderpass_desc;
 
 typedef struct xe_gfx_renderpass {
     /* TODO: Framebuffer */
     lu_rect viewport;
-    float background_color[3];
-    uint16_t clear_flags;
-    uint16_t head;
-    xe_gfx_draw_batch batches[1024];
+    lu_color bg_color;
+    bool clear_color;
+    bool clear_depth;
+    bool clear_stencil;
+    int head;
+    xe_gfx_draw_batch batches[512];
 } xe_gfx_renderpass;
 
 typedef struct xe_gfx_config {
@@ -131,6 +120,8 @@ typedef struct xe_gfx_config {
     const char *vert_shader_path;
     const char *frag_shader_path;
     xe_gfx_rops default_ops;
+    lu_color background_color;
+    lu_rect viewport;
 } xe_gfx_config;
 
 bool xe_gfx_init(xe_gfx_config *config);
@@ -145,8 +136,13 @@ xe_gfx_tex xe_gfx_tex_alloc(xe_gfx_texfmt format);
 void xe_gfx_tex_load(xe_gfx_tex tex, void *data);
 
 /* Adds  */
+void xe_gfx_pass_begin(lu_rect viewport, lu_color background,
+                       bool clear_color, bool clear_depth, bool clear_stencil,
+                       xe_gfx_rops ops);
+
+void xe_gfx_rops_set(xe_gfx_rops ops);
 void xe_gfx_push(const void *vert, size_t vert_size, const void *indices, size_t indices_size, xe_gfx_material *material);
-void xe_gfx_render(int viewport_width, int viewport_height);
+void xe_gfx_render(void);
 
 #endif /* XE_GFX_H */
 
