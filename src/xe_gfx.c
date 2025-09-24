@@ -288,8 +288,7 @@ xe_gfx_init(xe_gfx_config *cfg)
         glDisable(GL_DEPTH_TEST);
     } else if (cfg->default_ops.depth != XE_DEPTH_UNSET) {
         glEnable(GL_DEPTH_TEST);
-        GLenum depthfn = xe__get_gl_depth_fn(cfg->default_ops.depth);
-        glDepthFunc(depthfn);
+        glDepthFunc(xe__lut_gl_depth_fn[cfg->default_ops.depth]);
     }
 
     /* Blending */
@@ -298,9 +297,8 @@ xe_gfx_init(xe_gfx_config *cfg)
         glDisable(GL_BLEND);
     } else if (cfg->default_ops.blend_src && cfg->default_ops.blend_dst) {
         glEnable(GL_BLEND);
-        GLenum bsrc = xe__get_gl_blend_fn(cfg->default_ops.blend_src);
-        GLenum bdst = xe__get_gl_blend_fn(cfg->default_ops.blend_dst);
-        glBlendFunc(bsrc, bdst);
+        glBlendFunc(xe__lut_gl_blend[cfg->default_ops.blend_src],
+                    xe__lut_gl_blend[cfg->default_ops.blend_dst]);
     }
 
     /* Face culling */
@@ -308,8 +306,7 @@ xe_gfx_init(xe_gfx_config *cfg)
         glDisable(GL_CULL_FACE);
     } else if (cfg->default_ops.cull != XE_CULL_UNSET) {
         glEnable(GL_CULL_FACE);
-        GLenum cull = xe__get_gl_cull(cfg->default_ops.cull);
-        glCullFace(cull);
+        glCullFace(xe__lut_gl_cull[cfg->default_ops.cull]);
     }
     
     /* Clipping */
@@ -499,7 +496,7 @@ xe_drawcmd_add(xe_mesh mesh, int draw_id)
 }
 
 void
-xe_gfx_push(const void *vert, size_t vert_size, const void *indices, size_t indices_size, xe_gfx_material *material)
+xe_gfx_push(const void *vert, size_t vert_size, const void *indices, size_t indices_size, const xe_gfx_material *material)
 {
     xe_mesh mesh = xe_mesh_add(vert, vert_size, indices, indices_size);
     int draw_id = xe_material_add(material);
@@ -507,11 +504,13 @@ xe_gfx_push(const void *vert, size_t vert_size, const void *indices, size_t indi
     lu_err_assert(draw_cmd_ret && "Can not add draw command: draw indirect buffer full.");
 }
 
-static void
-xe_render(void)
+void
+xe_gfx_render(void)
 {
-    lu_err_assert(g_r.drawlist.head == 
-            (g_r.rpass.batches[g_r.rpass.head].start_offset + 
+    lu_hook_notify(LU_HOOK_PRE_RENDER, &g_r);
+
+    lu_err_assert(g_r.drawlist.head ==
+            (g_r.rpass.batches[g_r.rpass.head].start_offset +
             g_r.rpass.batches[g_r.rpass.head].batch_size * sizeof(xe_drawcmd)));
 
 
@@ -531,7 +530,7 @@ xe_render(void)
         g_r.curr_bgcolor = g_r.rpass.bg_color;
     }
 
-    glClear((g_r.rpass.clear_color   * GL_COLOR_BUFFER_BIT) | 
+    glClear((g_r.rpass.clear_color   * GL_COLOR_BUFFER_BIT) |
             (g_r.rpass.clear_depth   * GL_DEPTH_BUFFER_BIT) |
             (g_r.rpass.clear_stencil * GL_STENCIL_BUFFER_BIT));
 
@@ -539,7 +538,7 @@ xe_render(void)
     memcpy((char*)g_r.uniforms.data + g_r.phase * sizeof(xe_shader_data), g_r.view_proj.m, sizeof(g_r.view_proj));
     glBindBufferRange(GL_UNIFORM_BUFFER, 0, g_r.uniforms.id, g_r.phase * sizeof(xe_shader_data), sizeof(xe_shader_data));
 
-    xe_gfx_rops prev_ops = g_r.curr_ops; 
+    xe_gfx_rops prev_ops = g_r.curr_ops;
     const int num_batches = g_r.rpass.head + 1;
     static const GLenum ELEM_TYPE = sizeof(xe_gfx_idx) == 4 ? GL_UNSIGNED_INT : GL_UNSIGNED_SHORT;
     for (int i = 0; i < num_batches; ++i) {
@@ -551,7 +550,7 @@ xe_render(void)
                 glDisable(GL_SCISSOR_TEST);
             } else {
                 glEnable(GL_SCISSOR_TEST);
-                glScissor(draw->rops.clip.x, draw->rops.clip.y, draw->rops.clip.w, draw->rops.clip.h); 
+                glScissor(draw->rops.clip.x, draw->rops.clip.y, draw->rops.clip.w, draw->rops.clip.h);
             }
 
             prev_ops.clip = draw->rops.clip;
@@ -565,9 +564,8 @@ xe_render(void)
                 draw->rops.blend_dst = XE_BLEND_DISABLED;
             } else {
                 glEnable(GL_BLEND);
-                GLenum bsrc = xe__get_gl_blend_fn(draw->rops.blend_src);
-                GLenum bdst = xe__get_gl_blend_fn(draw->rops.blend_dst);
-                glBlendFunc(bsrc, bdst);
+                glBlendFunc(xe__lut_gl_blend[draw->rops.blend_src],
+                            xe__lut_gl_blend[draw->rops.blend_dst]);
             }
 
             prev_ops.blend_src = draw->rops.blend_src;
@@ -579,8 +577,7 @@ xe_render(void)
                 glDisable(GL_CULL_FACE);
             } else {
                 glEnable(GL_CULL_FACE);
-                GLenum cull = xe__get_gl_cull(draw->rops.cull);
-                glCullFace(cull);
+                glCullFace(xe__lut_gl_cull[draw->rops.cull]);
             }
 
             prev_ops.cull = draw->rops.cull;
@@ -591,8 +588,7 @@ xe_render(void)
                 glDisable(GL_DEPTH_TEST);
             } else {
                 glEnable(GL_DEPTH_TEST);
-                GLenum depth_fn = xe__get_gl_depth_fn(draw->rops.depth);
-                glDepthFunc(depth_fn);
+                glDepthFunc(xe__lut_gl_depth_fn[draw->rops.depth]);
             }
 
             prev_ops.depth = draw->rops.depth;
@@ -603,15 +599,15 @@ xe_render(void)
                 (void*)draw->start_offset,
                 draw->batch_size, 0);
 
-#if 1
-        lu_log("\nBatch %d:\ncmd count: %ld\n", i, draw->batch_size);
+#if XE_VERBOSE
+        lu_log_verbose("\nBatch %d:\ncmd count: %ld\n", i, draw->batch_size);
 #endif
     }
 
     g_r.curr_ops = prev_ops;
 
-#if 1
-    lu_log("\nTotal:\ncmd count: %ld\nvtx count: %ld\nidx count: %ld\n",
+#if XE_VERBOSE
+    lu_log_verbose("\nTotal:\ncmd count: %ld\nvtx count: %ld\nidx count: %ld\n",
             (g_r.drawlist.head / sizeof(xe_drawcmd)) % XE_MAX_DRAW_INDIRECT,
             (g_r.vertices.head / sizeof(xe_gfx_vtx)) % XE_MAX_VERTICES,
             (g_r.indices.head / sizeof(xe_gfx_idx)) % XE_MAX_INDICES);
@@ -623,54 +619,6 @@ xe_render(void)
     g_r.drawlist.head = g_r.phase * XE_MAX_DRAW_INDIRECT * sizeof(xe_drawcmd);
     g_r.vertices.head = g_r.phase * XE_MAX_VERTICES * sizeof(xe_gfx_vtx);
     g_r.indices.head = g_r.phase * XE_MAX_INDICES * sizeof(xe_gfx_idx);
-}
-
-void
-xe_gfx_render(void)
-{
-    lu_hook_notify(LU_HOOK_PRE_RENDER, &g_r);
-
-    xe_render();
-#if 0
-    {
-        static int last_w, last_h;
-        if (last_w != viewport_width || last_h != viewport_height) {
-            glViewport(0, 0, viewport_width, viewport_height);
-            last_w = viewport_width;
-            last_h = viewport_height;
-        }
-    }
-
-    xe_gfx_sync();
-    memcpy((char*)g_r.uniforms.data + g_r.phase * sizeof(xe_shader_data), g_r.view_proj.m, sizeof(g_r.view_proj));
-    glBindBufferRange(GL_UNIFORM_BUFFER, 0, g_r.uniforms.id, g_r.phase * sizeof(xe_shader_data), sizeof(xe_shader_data));
-
-    glClear(GL_COLOR_BUFFER_BIT);
-
-    ptrdiff_t frame_start = g_r.phase * XE_MAX_DRAW_INDIRECT * sizeof(xe_drawcmd);
-    ptrdiff_t cmd_count = (g_r.drawlist.head - frame_start) / sizeof(xe_drawcmd);
-    lu_err_assert(((g_r.drawlist.head - frame_start) % sizeof(xe_drawcmd)) == 0);
-    lu_err_assert(cmd_count <= XE_MAX_DRAW_INDIRECT && "The draw list is larger than the buffer.");
-    glMultiDrawElementsIndirect(
-            GL_TRIANGLES,
-            sizeof(xe_gfx_idx) == 4 ? GL_UNSIGNED_INT : GL_UNSIGNED_SHORT,
-            (void*)frame_start,
-            cmd_count, 0);
-
-#if 1
-    lu_log("\ncmd count: %ld\nvtx count: %ld\nidx count: %ld\n",
-            cmd_count,
-            (g_r.vertices.head / sizeof(xe_gfx_vtx)) % XE_MAX_VERTICES,
-            (g_r.indices.head / sizeof(xe_gfx_idx)) % XE_MAX_INDICES);
-#endif
-
-    g_r.fence[g_r.phase] = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
-    g_r.phase = (g_r.phase + 1) % 3;
-    g_r.uniforms.head = g_r.phase * sizeof(xe_shader_data) + offsetof(xe_shader_data, data);
-    g_r.drawlist.head = g_r.phase * XE_MAX_DRAW_INDIRECT * sizeof(xe_drawcmd);
-    g_r.vertices.head = g_r.phase * XE_MAX_VERTICES * sizeof(xe_gfx_vtx);
-    g_r.indices.head = g_r.phase * XE_MAX_INDICES * sizeof(xe_gfx_idx);
-#endif
 
     lu_hook_notify(LU_HOOK_POST_RENDER, &g_r);
 }

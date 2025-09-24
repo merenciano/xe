@@ -2,7 +2,6 @@
 #include <xe_gfx.h>
 #include <xe_platform.h>
 #include <llulu/lu_defs.h>
-#include <llulu/lu_log.h>
 #include <llulu/lu_math.h>
 #include <stb/stb_image.h>
 #include <stdio.h>

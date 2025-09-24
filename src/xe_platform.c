@@ -60,10 +60,14 @@ xe_platform_init(xe_platform *platform, xe_platform_config *config)
 
     pl->name = XE_PLATFORM_NAME;
     pl->config = *config;
-    pl->log_stream = fopen(pl->config.log_filename, "w");
-    if (!pl->log_stream) {
+    if (!pl->config.log_filename || *pl->config.log_filename == '\0') {
         pl->log_stream = stdout;
-        lu_log_verbose("fopen file %s failed, using stdout instead.", pl->config.log_filename);
+    } else {
+        pl->log_stream = fopen(pl->config.log_filename, "w");
+        if (!pl->log_stream) {
+            pl->log_stream = stdout;
+            lu_log_verbose("fopen file %s failed, using stdout instead.", pl->config.log_filename);
+        }
     }
 
     lu_err_assert(pl->log_stream);

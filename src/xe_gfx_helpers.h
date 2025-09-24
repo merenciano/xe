@@ -3,10 +3,9 @@
 #define XE_GFX_HELPERS_H
 
 #include "xe_gfx.h"
-#include <llulu/lu_error.h>
 #include <glad/glad.h>
 
-static const int g_tex_fmt_lut_internal[XE_TEX_FMT_COUNT] = {
+static const int g_tex_fmt_lut_internal[] = {
     GL_R8,
     GL_RG8,
     GL_RGB8,
@@ -22,7 +21,7 @@ static const int g_tex_fmt_lut_internal[XE_TEX_FMT_COUNT] = {
     GL_RGBA32F,
 };
 
-static const int g_tex_fmt_lut_format[XE_TEX_FMT_COUNT] = {
+static const int g_tex_fmt_lut_format[] = {
     GL_RED,
     GL_RG,
     GL_RGB,
@@ -38,7 +37,7 @@ static const int g_tex_fmt_lut_format[XE_TEX_FMT_COUNT] = {
     GL_RGBA,
 };
 
-static const int g_tex_fmt_lut_type[XE_TEX_FMT_COUNT] = {
+static const int g_tex_fmt_lut_type[] = {
     GL_UNSIGNED_BYTE,
     GL_UNSIGNED_BYTE,
     GL_UNSIGNED_BYTE,
@@ -54,26 +53,28 @@ static const int g_tex_fmt_lut_type[XE_TEX_FMT_COUNT] = {
     GL_FLOAT,
 };
 
-static inline GLenum
-xe__get_gl_blend_fn(int blend_fn)
-{
-    lu_err_assert(blend_fn >= 0 && blend_fn < XE_BLEND_COUNT);
-    return (const GLenum[]) { 0, 0, GL_ONE, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ZERO }[blend_fn];
-}
+static const GLenum xe__lut_gl_blend[] = {
+    0,
+    0,
+    GL_ONE,
+    GL_SRC_ALPHA,
+    GL_ONE_MINUS_SRC_ALPHA,
+    GL_ZERO
+};
 
-static inline GLenum
-xe__get_gl_cull(int cull)
-{
-    lu_err_assert(cull >= 0 && cull < XE_CULL_COUNT);
-    return (const GLenum[]) { 0, 0, GL_FRONT, GL_BACK, GL_FRONT_AND_BACK }[cull];
-}
+static const GLenum xe__lut_gl_cull[] = {
+    0,
+    0,
+    GL_FRONT,
+    GL_BACK,
+    GL_FRONT_AND_BACK
+};
 
-static inline GLenum
-xe__get_gl_depth_fn(int depth_fn)
-{
-    lu_err_assert(depth_fn >= 0 && depth_fn < XE_DEPTH_COUNT);
-    return (const GLenum[]) { 0, 0, GL_LEQUAL, GL_LESS }[depth_fn];
-}
+static const GLenum xe__lut_gl_depth_fn[] = {
+    0,
+    0,
+    GL_LEQUAL,
+    GL_LESS
+};
 
 #endif /* XE_GFX_HELPERS_H */
-

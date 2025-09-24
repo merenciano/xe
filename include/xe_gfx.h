@@ -100,7 +100,7 @@ typedef struct xe_gfx_rops {
 
 typedef struct xe_gfx_draw_batch {
     ptrdiff_t start_offset; /* in draw units */
-    size_t batch_size;   /* in draw units */
+    int batch_size;   /* in draw units */
     xe_gfx_rops rops;
 } xe_gfx_draw_batch;
 
@@ -141,7 +141,7 @@ void xe_gfx_pass_begin(lu_rect viewport, lu_color background,
                        xe_gfx_rops ops);
 
 void xe_gfx_rops_set(xe_gfx_rops ops);
-void xe_gfx_push(const void *vert, size_t vert_size, const void *indices, size_t indices_size, xe_gfx_material *material);
+void xe_gfx_push(const void *vert, size_t vert_size, const void *indices, size_t indices_size, const xe_gfx_material *material);
 void xe_gfx_render(void);
 
 #endif /* XE_GFX_H */

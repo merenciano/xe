@@ -28,13 +28,14 @@ target_include_directories(xe PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/extern/llulu/include
 )
 
-target_compile_options(xe PRIVATE
-    -Wall
-)
-
-add_compile_definitions(
+target_compile_definitions(xe PUBLIC
+    $<$<CONFIG:Debug>:LU_DEBUG>
     $<$<CONFIG:Debug>:XE_DEBUG>
     $<$<CONFIG:Debug>:XE_VERBOSE>
+)
+
+target_compile_options(xe PRIVATE
+    -Wall
 )
 
 if (WIN32)

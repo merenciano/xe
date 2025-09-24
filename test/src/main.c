@@ -109,7 +109,7 @@ int main(int argc, char **argv)
         xe_image_load("./assets/tex_test_0.png", 0),
         xe_image_load("./assets/tex_test_1.png", 0),
         xe_image_load("./assets/tex_test_2.png", 0),
-        xe_image_load("./assets/tex_test_3.png", 0)
+        xe_image_load("./assets/default.png", 0)
     };
  
     owl_tracks owltracks;
