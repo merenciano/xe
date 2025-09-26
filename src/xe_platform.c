@@ -100,6 +100,7 @@ xe_platform_init(xe_platform *platform, xe_platform_config *config)
 
     pl->gl_loader = (void *(*)(const char *))glfwGetProcAddress;
     glfwGetFramebufferSize(win, &pl->viewport_w, &pl->viewport_h);
+    glfwGetWindowSize(win, &pl->window_w, &pl->window_h);
 
     int64_t elapsed = lu_time_elapsed(timer);
     pl->timers_data.glfw_init = elapsed;
@@ -127,10 +128,11 @@ xe_platform_update(void)
     glfwSetWindowTitle(win, pl->window_title);
     glfwPollEvents();
     glfwGetFramebufferSize(win, &pl->viewport_w, &pl->viewport_h);
+    glfwGetWindowSize(win, &pl->window_w, &pl->window_h);
     double x, y;
     glfwGetCursorPos(win, &x, &y);
-    pl->mouse_x = x;
-    pl->mouse_y = y;
+    pl->mouse_x = (float)x;
+    pl->mouse_y = (float)y;
     pl->close = glfwWindowShouldClose(win);
     return lu_time_sec(pl->delta_ns);
 }
