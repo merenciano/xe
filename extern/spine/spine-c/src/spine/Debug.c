@@ -209,10 +209,12 @@ void spDebug_printTimeline(spTimeline *timeline) {
 			spSequenceTimeline *t = (spSequenceTimeline *) timeline;
 			_spDebug_printTimelineBase(&t->super);
 		}
+		// fall through
 		case SP_TIMELINE_INHERIT: {
 			spInheritTimeline *t = (spInheritTimeline *) timeline;
 			_spDebug_printTimelineBase(&t->super);
 		}
+		// fall through
 		default: {
 			_spDebug_printTimelineBase(timeline);
 		}

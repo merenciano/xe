@@ -10,16 +10,14 @@
 
 struct xe_res_arr {
     struct xe_res_image img[XE_MAX_IMAGES];
-
 };
 
 static struct xe_res_arr g_res;
 
-inline const struct xe_res_image *xe_image_ptr(xe_image img);
 const struct xe_res_image *
-xe_image_ptr(xe_image img)
+xe_image_ptr(xe_image image)
 {
-    uint16_t i = xe_res_index(img.id);
+    uint16_t i = xe_res_index(image.id);
     return i < XE_MAX_IMAGES ? &g_res.img[i] : NULL;
 }
 
@@ -61,14 +59,14 @@ xe_pixel_format_from_ch(int ch)
 xe_image
 xe_image_load(const char *path, int tex_flags)
 {
-    xe_image h = {.id = XE_MAX_IMAGES};
+    xe_image hnd = {.id = XE_MAX_IMAGES};
     struct xe_res_image *img = NULL;
     for (int i = 0; i < XE_MAX_IMAGES; ++i) {
         if (g_res.img[i].res.state == XE_RS_FREE) {
             img = g_res.img + i;
             img->res.state = XE_RS_EMPTY;
             uint16_t ver = img->res.version++;
-            h.id = xe_res_handle_gen(ver, i);
+            hnd.id = xe_res_handle_gen(ver, i);
             break;
         }
     }
@@ -102,5 +100,5 @@ xe_image_load(const char *path, int tex_flags)
         }
     }
 
-    return h;
+    return hnd;
 }

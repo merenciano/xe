@@ -99,6 +99,7 @@ void spIkConstraint_apply1(spBone *bone, float targetX, float targetY, int /*boo
 			pd = sa * s * bone->skeleton->scaleY;
 			rotationIK += ATAN2(sc, sa) * RAD_DEG;
 		}
+		// fall through
 		default: {
 			float x = targetX - p->worldX, y = targetY - p->worldY;
 			float d = pa * pd - pb * pc;

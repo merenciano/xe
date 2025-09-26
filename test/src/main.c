@@ -9,8 +9,9 @@
 #include <spine/spine.h>
 
 #include <stdbool.h>
+#include <stdio.h>
 
-xe_platform *plat = NULL;
+static xe_platform platform;
 
 typedef struct {
     spTrackEntry *left;
@@ -40,8 +41,8 @@ static void owl_init(xe_scene_node self, void *ctx)
 static void owl_update(xe_scene_node self, void *ctx)
 {
     owl_tracks *tracks = ctx;
-    float x = plat->mouse_x / plat->config.display_w;
-    float y = plat->mouse_y / plat->config.display_h;
+    float x = platform.mouse_x / (float)platform.window_w;
+    float y = platform.mouse_y / (float)platform.window_h;
     tracks->left->alpha = (lu_maxf(x, 0.5f) - 0.5f) * 1.0f;
     tracks->right->alpha = (0.5f - lu_minf(x, 0.5f)) * 1.0f;
     tracks->down->alpha = (lu_maxf(y, 0.5f) - 0.5f) * 1.0f;
@@ -66,22 +67,37 @@ static void node2_update(xe_scene_node self, void *data)
 static void node3_update(xe_scene_node self, void *data)
 {
     (void)data;
-    float curr_time_sec = lu_time_sec(lu_time_elapsed(plat->begin_timestamp));
+    float curr_time_sec = lu_time_sec(lu_time_elapsed(platform.begin_timestamp));
     xe_transform_set_scale(self, (2.0f + lu_sin(curr_time_sec * 2.0f)) * 0.5f, (2.0f + lu_cos(curr_time_sec * 2.0f)) * 0.5f, 1.0f);
     xe_transform_set_pos(self, 18.0f * lu_sin(curr_time_sec * 0.7f), 13.0f, -20.0f);
 }
 
 int main(int argc, char **argv)
 {
-    plat = xe_platform_create(&(xe_platform_config){
-        .title = "XE TEST",
-        .display_w = 1200,
-        .display_h = 900,
-        .vsync = false,
-        .log_filename = ""
-    });
+    if (!xe_platform_init(&platform, &(xe_platform_config){
+            .title = "XE TEST",
+            .display_w = 1200,
+            .display_h = 900,
+            .vsync = true,
+            .log_filename = "" })) {
+        return 1;
+    }
 
-    if (!plat) {
+    if (!xe_gfx_init(&((xe_gfx_config) {
+        .gl_loader = platform.gl_loader,
+        .vert_shader_path = "./assets/vert.glsl",
+        .frag_shader_path = "./assets/frag.glsl",
+        .default_ops = {
+            .clip = {0, 0, 0, 0},
+            .blend_src = XE_BLEND_ONE,
+            .blend_dst = XE_BLEND_ONE_MINUS_SRC_ALPHA,
+            .depth = XE_DEPTH_DISABLED,
+            .cull = XE_CULL_NONE
+        },
+        .background_color = { .r = 1.0f, .g = 0.0f, .b = 0.0f, .a = 1.0f },
+        .viewport = { .x = 0, .y = 0, platform.viewport_w, platform.viewport_h }
+    }))) {
+        printf("Can not init graphics module.\n");
         return 1;
     }
 
@@ -91,7 +107,7 @@ int main(int argc, char **argv)
         xe_image_load("./assets/tex_test_0.png", 0),
         xe_image_load("./assets/tex_test_1.png", 0),
         xe_image_load("./assets/tex_test_2.png", 0),
-        xe_image_load("./assets/tex_test_3.png", 0)
+        xe_image_load("./assets/default.png", 0)
     };
  
     owl_tracks owltracks;
@@ -107,7 +123,7 @@ int main(int argc, char **argv)
     owl_init(owl, &owltracks);
 
     int64_t elapsed = lu_time_elapsed(timer);
-    plat->timers_data.img_load = elapsed;
+    platform.timers_data.img_load = elapsed;
     timer = lu_time_get();
 
     xe_scene_node nodes[4];
@@ -132,19 +148,39 @@ int main(int argc, char **argv)
     xe_scene_register_node_update(nodes[3], NULL, node3_update);
 
     elapsed = lu_time_elapsed(timer);
-    plat->timers_data.scene_load = elapsed;
+    platform.timers_data.scene_load = elapsed;
 
-    plat->timers_data.init_time = lu_time_elapsed(plat->begin_timestamp);
+    platform.timers_data.init_time = lu_time_elapsed(platform.begin_timestamp);
     deltasec = xe_platform_update();
 
-    while(!plat->close) {
+    while(!platform.close) {
+        xe_gfx_pass_begin(
+            (lu_rect){0, 0, platform.viewport_w, platform.viewport_h},
+            (lu_color){ 0.1f, 0.07f, 0.1f, 1.0f},
+            true, true, false,
+            (xe_gfx_rops){ 
+                .clip = {0,0,0,0},
+                .blend_src = XE_BLEND_DISABLED,
+                .blend_dst = XE_BLEND_DISABLED,
+                .depth = XE_DEPTH_DISABLED,
+                .cull = XE_CULL_NONE
+            }
+        );
+
         /* Systems */
         xe_spine_animation_pass(deltasec);
         xe_scene_update_world();
         xe_gfx_sync();
         xe_scene_drawable_draw_pass();
+        xe_gfx_rops_set((xe_gfx_rops) {
+                .clip = {0,0,0,0},
+                .blend_src = XE_BLEND_ONE,
+                .blend_dst = XE_BLEND_ONE_MINUS_SRC_ALPHA,
+                .depth = XE_DEPTH_UNSET,
+                .cull = XE_CULL_UNSET });
         xe_spine_draw_pass();
 
+        xe_gfx_render();
         deltasec = xe_platform_update();
     }
 

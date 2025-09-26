@@ -22,51 +22,60 @@ static int xe_stat(const char *path, xe_stat_t *st) { return stat(path, st); }
 const char * const g_null_stream = "/dev/null";
 #endif
 
-static xe_platform g_plat;
+static const char *const XE_PLATFORM_NAME = "glfw3";
+static xe_platform *pl;
 
 static void
 xep_log_report()
 {
-    lu_log(" * Report (%lld frames, %.2f seconds) * ", g_plat.frame_cnt, lu_time_sec(g_plat.timers_data.total));
-    lu_log("Init time: %lld ms", lu_time_ms(g_plat.timers_data.init_time));
-    lu_log(" - glfw:\t%lld ms", lu_time_ms(g_plat.timers_data.glfw_init));
-    lu_log(" - img load:\t%lld ms", lu_time_ms(g_plat.timers_data.img_load));
-    lu_log(" - renderer:\t%lld ms", lu_time_ms(g_plat.timers_data.renderer_init));
-    lu_log(" - scene:\t%lld ms", lu_time_ms(g_plat.timers_data.scene_load));
+    lu_err_assert(pl);
+    lu_log(" * Report (%lld frames, %.2f seconds) * ", pl->frame_cnt, lu_time_sec(pl->timers_data.total));
+    lu_log("Init time: %lld ms", lu_time_ms(pl->timers_data.init_time));
+    lu_log(" - glfw:\t%lld ms", lu_time_ms(pl->timers_data.glfw_init));
+    lu_log(" - img load:\t%lld ms", lu_time_ms(pl->timers_data.img_load));
+    lu_log(" - renderer:\t%lld ms", lu_time_ms(pl->timers_data.renderer_init));
+    lu_log(" - scene:\t%lld ms", lu_time_ms(pl->timers_data.scene_load));
     int64_t sum = 0;
     for (int i = 0; i < 256; ++i) {
-        sum += g_plat.timers_data.frame_time[i];
+        sum += pl->timers_data.frame_time[i];
     }
     sum /= 256;
     lu_log("Last 256 frame times average: %.2f ms\n", sum / 1000000.0f);
-    lu_log("Shutdown: %lld ms\n", lu_time_ms(g_plat.timers_data.shutdown));
+    lu_log("Shutdown: %lld ms\n", lu_time_ms(pl->timers_data.shutdown));
 }
 
-xe_platform *
-xe_platform_create(xe_platform_config *config)
+bool
+xe_platform_init(xe_platform *platform, xe_platform_config *config)
 {
-    if (g_plat.initialized) {
+    lu_err_assert(!pl && platform);
+    lu_err_assert(config);
+    pl = platform;
+    if (pl->name == XE_PLATFORM_NAME) {
         lu_log("xep_init call ignored: platform already initialized.");
-        return &g_plat;
+        return false; 
     }
 
-    g_plat.begin_timestamp = lu_time_get();
+    pl->begin_timestamp = lu_time_get();
     lu_hook_notify(LU_HOOK_PRE_INIT, NULL);
 
-    g_plat.name = "Desktop";
-    g_plat.config = *config;
-    g_plat.log_stream = fopen(g_plat.config.log_filename, "w");
-    if (!g_plat.log_stream) {
-        g_plat.log_stream = stdout;
-        lu_log_verbose("fopen file %s failed, using stdout instead.", g_plat.config.log_filename);
+    pl->name = XE_PLATFORM_NAME;
+    pl->config = *config;
+    if (!pl->config.log_filename || *pl->config.log_filename == '\0') {
+        pl->log_stream = stdout;
+    } else {
+        pl->log_stream = fopen(pl->config.log_filename, "w");
+        if (!pl->log_stream) {
+            pl->log_stream = stdout;
+            lu_log_verbose("fopen file %s failed, using stdout instead.", pl->config.log_filename);
+        }
     }
 
-    lu_err_assert(g_plat.log_stream);
+    lu_err_assert(pl->log_stream);
 
     lu_timestamp timer = lu_time_get();
     if (!glfwInit()) {
         lu_log_panic("Could not init glfw. Aborting...\n");
-        return NULL;
+        return false;
     }
 
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
@@ -75,85 +84,78 @@ xe_platform_create(xe_platform_config *config)
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_FALSE);
     glfwWindowHint(GLFW_SAMPLES, 4);
 
-    g_plat.window = glfwCreateWindow(g_plat.config.display_w,
-                           g_plat.config.display_h,
-                           g_plat.config.title,
+    pl->window = glfwCreateWindow(pl->config.display_w,
+                           pl->config.display_h,
+                           pl->config.title,
                            NULL, NULL);
-    GLFWwindow *win = g_plat.window;
+    GLFWwindow *win = pl->window;
     if (!win) {
         glfwTerminate();
         lu_log_panic("Could not open glfw window. Aborting...\n");
-        return NULL;
+        return false;
     }
 
     glfwMakeContextCurrent(win);
-    glfwSwapInterval((int)g_plat.config.vsync);
+    glfwSwapInterval((int)pl->config.vsync);
+
+    pl->gl_loader = (void *(*)(const char *))glfwGetProcAddress;
+    glfwGetFramebufferSize(win, &pl->viewport_w, &pl->viewport_h);
+    glfwGetWindowSize(win, &pl->window_w, &pl->window_h);
 
     int64_t elapsed = lu_time_elapsed(timer);
-    g_plat.timers_data.glfw_init = elapsed;
+    pl->timers_data.glfw_init = elapsed;
+
+
     timer = lu_time_get();
-
-    // INIT renderer
-    int canv_w, canv_h;
-    glfwGetFramebufferSize(win, &canv_w, &canv_h);
-    xe_gfx_init(&(xe_gfx_config){
-        .gl_loader = (void *(*)(const char *))glfwGetProcAddress,
-        .canvas = {.w = canv_w, .h = canv_h},
-        .vert_shader_path = "./assets/vert.glsl",
-        .frag_shader_path = "./assets/frag.glsl"
-    });
-
     elapsed = lu_time_elapsed(timer);
-    g_plat.timers_data.renderer_init = elapsed;
-    g_plat.frame_timestamp = lu_time_get();
-
-    g_plat.initialized = true;
-    lu_hook_notify(LU_HOOK_POST_INIT, &g_plat);
-    return &g_plat;
+    pl->timers_data.renderer_init = elapsed;
+    pl->frame_timestamp = lu_time_get();
+    lu_hook_notify(LU_HOOK_POST_INIT, pl);
+    return true;
 }
 
 float
 xe_platform_update(void)
 {
-    xe_gfx_render();
-    GLFWwindow *win = g_plat.window;
+    lu_err_assert(pl && pl->name == XE_PLATFORM_NAME);
+    GLFWwindow *win = pl->window;
     glfwSwapBuffers(win);
-    g_plat.delta_ns = lu_time_elapsed(g_plat.frame_timestamp);
-    g_plat.frame_timestamp = lu_time_get();
-    g_plat.timers_data.frame_time[g_plat.frame_cnt % 256] = g_plat.delta_ns;
-    ++g_plat.frame_cnt;
-    sprintf(g_plat.window_title, "%s  |  %f fps", g_plat.config.title, 1.0f / lu_time_sec(g_plat.delta_ns));
-    glfwSetWindowTitle(win, g_plat.window_title);
+    pl->delta_ns = lu_time_elapsed(pl->frame_timestamp);
+    pl->frame_timestamp = lu_time_get();
+    pl->timers_data.frame_time[pl->frame_cnt % 256] = pl->delta_ns;
+    ++pl->frame_cnt;
+    sprintf(pl->window_title, "%s  |  %f fps", pl->config.title, 1.0f / lu_time_sec(pl->delta_ns));
+    glfwSetWindowTitle(win, pl->window_title);
     glfwPollEvents();
-    glfwGetWindowSize(win, &g_plat.config.display_w, &g_plat.config.display_w);
-    int canvas_w, canvas_h;
-    glfwGetFramebufferSize(win, &canvas_w, &canvas_h);
+    glfwGetFramebufferSize(win, &pl->viewport_w, &pl->viewport_h);
+    glfwGetWindowSize(win, &pl->window_w, &pl->window_h);
     double x, y;
     glfwGetCursorPos(win, &x, &y);
-    g_plat.mouse_x = x;
-    g_plat.mouse_y = y;
-    g_plat.close = glfwWindowShouldClose(win);
-    return lu_time_sec(g_plat.delta_ns);
+    pl->mouse_x = (float)x;
+    pl->mouse_y = (float)y;
+    pl->close = glfwWindowShouldClose(win);
+    return lu_time_sec(pl->delta_ns);
 }
 
 void
-xe_platform_shutdown()
+xe_platform_shutdown(void)
 {
-    lu_hook_notify(LU_HOOK_PRE_SHUTDOWN, &g_plat);
-    if (!g_plat.initialized) {
-        return;
+    lu_hook_notify(LU_HOOK_PRE_SHUTDOWN, pl);
+    lu_timestamp start = lu_time_get();
+    if (!pl || pl->name != XE_PLATFORM_NAME) {
+        goto shutdown_skip;
     }
 
-    lu_timestamp start = lu_time_get();
-    xe_gfx_shutdown();
-    glfwDestroyWindow(g_plat.window);
+    glfwDestroyWindow(pl->window);
     glfwTerminate();
-    g_plat.timers_data.shutdown = lu_time_elapsed(start);
-    g_plat.timers_data.total = lu_time_elapsed(g_plat.begin_timestamp);
+    pl->name = "";
+
+shutdown_skip:
+    pl->timers_data.shutdown = lu_time_elapsed(start);
+    pl->timers_data.total = lu_time_elapsed(pl->begin_timestamp);
     xep_log_report();
-    fclose(g_plat.log_stream);
-    g_plat.initialized = false;
-    lu_hook_notify(LU_HOOK_POST_SHUTDOWN, &g_plat);
+    fclose(pl->log_stream);
+    lu_hook_notify(LU_HOOK_POST_SHUTDOWN, pl);
 }
 
 void
@@ -162,9 +164,9 @@ xe_log_ex(const char *tag, const char *file, int line, ...)
     va_list args;
     va_start(args, line);
     const char *fmt = va_arg(args, const char*);
-    fprintf(g_plat.log_stream, "[%s] %s(%d): ", tag, file, line);
-    vfprintf(g_plat.log_stream, fmt, args);
-    fputc('\n', g_plat.log_stream);
+    fprintf(pl->log_stream, "[%s] %s(%d): ", tag, file, line);
+    vfprintf(pl->log_stream, fmt, args);
+    fputc('\n', pl->log_stream);
     va_end(args);
 }
 
@@ -202,3 +204,4 @@ xe_file_read(const char *path, void *buf, size_t bufsize, size_t *out_len)
     fclose(f);
     return eof;
 }
+

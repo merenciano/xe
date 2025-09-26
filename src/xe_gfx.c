@@ -1,4 +1,5 @@
 #include "xe_gfx.h"
+#include "xe_gfx_helpers.h"
 #include "xe_platform.h"
 
 #include <llulu/lu_time.h>
@@ -65,6 +66,13 @@ typedef struct xe_drawcmd {
     uint32_t draw_index; // base_instance
 } xe_drawcmd;
 
+enum {
+    XE_VERTICES_MAP_SIZE = XE_MAX_VERTICES * 3 * sizeof(xe_gfx_vtx),
+    XE_INDICES_MAP_SIZE = XE_MAX_INDICES * 3 * sizeof(xe_gfx_idx),
+    XE_UNIFORMS_MAP_SIZE = 3 * sizeof(xe_shader_data),
+    XE_DRAW_INDIRECT_MAP_SIZE = XE_MAX_DRAW_INDIRECT * 3 * sizeof(xe_drawcmd),
+};
+
 /* Persistent mapped video buffer */
 enum {
     XE_VBUF_MAP_FLAGS = GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT,
@@ -86,7 +94,6 @@ typedef struct xe_shader {
 
 typedef struct xe_pipeline {
     xe_shader shader;
-    xe_gfx_canvas target;
 } xe_pipeline;
 
 typedef struct xe_gl_renderer {
@@ -94,68 +101,18 @@ typedef struct xe_gl_renderer {
     int phase; /* for the triphassic fence */
     GLsync fence[3];
     lu_mat4 view_proj; // TODO: move to scene
-
     xe_pipeline pipeline;
+
     xe_vbuf vertices;
     xe_vbuf indices;
     xe_vbuf uniforms;
     xe_vbuf drawlist;
+
+    xe_gfx_renderpass rpass;
+    xe_gfx_rops curr_ops;
+    lu_rect curr_vp;
+    lu_color curr_bgcolor;
 } xe_gl_renderer;
-
-enum {
-    XE_VERTICES_MAP_SIZE = XE_MAX_VERTICES * 3 * sizeof(xe_gfx_vtx),
-    XE_INDICES_MAP_SIZE = XE_MAX_INDICES * 3 * sizeof(xe_gfx_idx),
-    XE_UNIFORMS_MAP_SIZE = 3 * sizeof(xe_shader_data),
-    XE_DRAW_INDIRECT_MAP_SIZE = XE_MAX_DRAW_INDIRECT * 3 * sizeof(xe_drawcmd),
-};
-
-static const int g_tex_fmt_lut_internal[XE_TEX_FMT_COUNT] = {
-    GL_R8,
-    GL_RG8,
-    GL_RGB8,
-    GL_SRGB8,
-    GL_RGBA8,
-    GL_R16F,
-    GL_RG16F,
-    GL_RGB16F,
-    GL_RGBA16F,
-    GL_R32F,
-    GL_RG32F,
-    GL_RGB32F,
-    GL_RGBA32F,
-};
-
-static const int g_tex_fmt_lut_format[XE_TEX_FMT_COUNT] = {
-    GL_RED,
-    GL_RG,
-    GL_RGB,
-    GL_RGB,
-    GL_RGBA,
-    GL_RED,
-    GL_RG,
-    GL_RGB,
-    GL_RGBA,
-    GL_RED,
-    GL_RG,
-    GL_RGB,
-    GL_RGBA,
-};
-
-static const int g_tex_fmt_lut_type[XE_TEX_FMT_COUNT] = {
-    GL_UNSIGNED_BYTE,
-    GL_UNSIGNED_BYTE,
-    GL_UNSIGNED_BYTE,
-    GL_UNSIGNED_BYTE,
-    GL_UNSIGNED_BYTE,
-    GL_HALF_FLOAT,
-    GL_HALF_FLOAT,
-    GL_HALF_FLOAT,
-    GL_HALF_FLOAT,
-    GL_FLOAT,
-    GL_FLOAT,
-    GL_FLOAT,
-    GL_FLOAT,
-};
 
 
 static xe_gl_renderer g_r; // Depends on zero init
@@ -174,7 +131,7 @@ xe_gfx_sync(void)
 }
 
 static void
-xe_shader_load_src(const char *vert_src, int vert_len, const char *frag_src, int frag_len)
+xe_shader_load_src(const char *vert_src, size_t vert_len, const char *frag_src, size_t frag_len)
 {
     // TODO: Clean the code related to this src variables.
     const GLchar *vert_src1 = &vert_src[0];
@@ -187,7 +144,8 @@ xe_shader_load_src(const char *vert_src, int vert_len, const char *frag_src, int
 
     // Vert
     GLuint vert_id = glCreateShader(GL_VERTEX_SHADER);
-    glShaderSource(vert_id, 1, vert_src2, &vert_len);
+    GLint vert_length = (int)vert_len;
+    glShaderSource(vert_id, 1, vert_src2, &vert_length);
     glCompileShader(vert_id);
     glGetShaderiv(vert_id, GL_COMPILE_STATUS, &err);
     if (!err) {
@@ -200,7 +158,8 @@ xe_shader_load_src(const char *vert_src, int vert_len, const char *frag_src, int
 
     // Frag
     GLuint frag_id = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(frag_id, 1, frag_src2, &frag_len); // see comment in the vertex shader
+    GLint frag_length = (int)frag_len;
+    glShaderSource(frag_id, 1, frag_src2, &frag_length); // see comment in the vertex shader
     glCompileShader(frag_id);
     glGetShaderiv(frag_id, GL_COMPILE_STATUS, &err);
     if (!err) {
@@ -257,7 +216,7 @@ xe_shader_gpu_setup(void)
     float view[16];
     float proj[16];
     lu_mat4_look_at(view, (float[]){0.0f, 0.0f, 2.0f}, (float[]){0.0f, 0.0f, 0.0f}, (float[]){0.0f, 1.0f, 0.0f});
-    lu_mat4_perspective_fov(proj, lu_radians(70.0f), (float)g_r.pipeline.target.w, (float)g_r.pipeline.target.h, 0.1f, 300.0f);
+    lu_mat4_perspective_fov(proj, lu_radians(70.0f), 1920.0f, 1080.0f, 0.1f, 300.0f);
     lu_mat4_multiply(g_r.view_proj.m, proj, view);
 
     g_r.pipeline.shader.program_id = glCreateProgram();
@@ -268,7 +227,7 @@ xe_gfx_tex
 xe_gfx_tex_alloc(xe_gfx_texfmt fmt)
 {
     lu_err_assert(fmt.width + fmt.height != 0);
-    lu_err_assert(fmt.format >= 0 && fmt.format < XE_TEX_FMT_COUNT && "Invalid pixel format.");
+    lu_err_assert(fmt.format < XE_TEX_FMT_COUNT && "Invalid pixel format.");
 
     // Look for an array of textures of the same format and push the new tex.
     for (int i = 0; i < XE_MAX_TEXTURE_ARRAYS; ++i) {
@@ -321,19 +280,49 @@ xe_gfx_init(xe_gfx_config *cfg)
         g_r.fence[i] = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
     }
 
-    g_r.pipeline.target.w = cfg->canvas.w;
-    g_r.pipeline.target.h = cfg->canvas.h;
     g_r.pipeline.shader.vert_path = cfg->vert_shader_path;
     g_r.pipeline.shader.frag_path = cfg->frag_shader_path;
 
-    glEnable(GL_MULTISAMPLE);
-    glDisable(GL_DEPTH_TEST);
-    glDisable(GL_CULL_FACE);
-    glDisable(GL_STENCIL_TEST);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA); // Using premultiplied alpha
-    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-    glViewport(0, 0, g_r.pipeline.target.w, g_r.pipeline.target.h);
+    /* Depth test */
+    if (cfg->default_ops.depth == XE_DEPTH_DISABLED) {
+        glDisable(GL_DEPTH_TEST);
+    } else if (cfg->default_ops.depth != XE_DEPTH_UNSET) {
+        glEnable(GL_DEPTH_TEST);
+        glDepthFunc(xe__lut_gl_depth_fn[cfg->default_ops.depth]);
+    }
+
+    /* Blending */
+    if (cfg->default_ops.blend_src == XE_BLEND_DISABLED ||
+        cfg->default_ops.blend_dst == XE_BLEND_DISABLED) {
+        glDisable(GL_BLEND);
+    } else if (cfg->default_ops.blend_src && cfg->default_ops.blend_dst) {
+        glEnable(GL_BLEND);
+        glBlendFunc(xe__lut_gl_blend[cfg->default_ops.blend_src],
+                    xe__lut_gl_blend[cfg->default_ops.blend_dst]);
+    }
+
+    /* Face culling */
+    if (cfg->default_ops.cull == XE_CULL_NONE) {
+        glDisable(GL_CULL_FACE);
+    } else if (cfg->default_ops.cull != XE_CULL_UNSET) {
+        glEnable(GL_CULL_FACE);
+        glCullFace(xe__lut_gl_cull[cfg->default_ops.cull]);
+    }
+    
+    /* Clipping */
+    if ((cfg->default_ops.clip.x | cfg->default_ops.clip.y |
+         cfg->default_ops.clip.w | cfg->default_ops.clip.h) == 0) {
+        glDisable(GL_SCISSOR_TEST);
+    } else {
+        glEnable(GL_SCISSOR_TEST);
+        glScissor(cfg->default_ops.clip.x, cfg->default_ops.clip.y, cfg->default_ops.clip.w, cfg->default_ops.clip.h); 
+    }
+
+    g_r.curr_ops = cfg->default_ops;
+    glClearColor(cfg->background_color.r, cfg->background_color.g, cfg->background_color.b, cfg->background_color.a);
+    glViewport(cfg->viewport.x, cfg->viewport.y, cfg->viewport.w, cfg->viewport.h);
+    g_r.curr_bgcolor = cfg->background_color;
+    g_r.curr_vp = cfg->viewport;
 
     /* Persistent mapped buffers for vertices, indices uniforms and indirect draw commands. */
     GLuint buf_id[4];
@@ -347,6 +336,7 @@ xe_gfx_init(xe_gfx_config *cfg)
     g_r.uniforms.id = buf_id[2];
     glNamedBufferStorage(g_r.uniforms.id, XE_UNIFORMS_MAP_SIZE, NULL, XE_VBUF_STORAGE_FLAGS);
     g_r.uniforms.data = glMapNamedBufferRange(g_r.uniforms.id, 0, XE_UNIFORMS_MAP_SIZE, XE_VBUF_MAP_FLAGS);
+    g_r.uniforms.head = offsetof(xe_shader_data, data);
     g_r.drawlist.id = buf_id[3];
     glBindBuffer(GL_DRAW_INDIRECT_BUFFER, g_r.drawlist.id);
     glNamedBufferStorage(g_r.drawlist.id, XE_DRAW_INDIRECT_MAP_SIZE, NULL, XE_VBUF_STORAGE_FLAGS);
@@ -380,33 +370,77 @@ xe_gfx_init(xe_gfx_config *cfg)
     return true;
 }
 
+void
+xe_gfx_pass_begin(lu_rect viewport, lu_color background,
+                  bool clear_color, bool clear_depth, bool clear_stencil,
+                  xe_gfx_rops ops)
+{
+    g_r.rpass.viewport = viewport;
+    g_r.rpass.bg_color = background;
+    g_r.rpass.clear_color = clear_color;
+    g_r.rpass.clear_depth = clear_depth;
+    g_r.rpass.clear_stencil = clear_stencil;
+    g_r.rpass.head = 0;
+    g_r.rpass.batches[0].start_offset = g_r.drawlist.head;
+    g_r.rpass.batches[0].batch_size = 0;
+    g_r.rpass.batches[0].rops = ops;
+}
+
+void
+xe_gfx_rops_set(xe_gfx_rops ops)
+{
+    xe_gfx_draw_batch *curr = &g_r.rpass.batches[g_r.rpass.head];
+    if (ops.blend_src == XE_BLEND_UNSET || ops.blend_dst == XE_BLEND_UNSET) {
+        ops.blend_src = curr->rops.blend_src;
+        ops.blend_dst = curr->rops.blend_dst;
+    }
+
+    if (ops.depth == XE_DEPTH_UNSET) {
+        ops.depth = curr->rops.depth;
+    }
+
+    if (ops.cull == XE_CULL_UNSET) {
+        ops.cull = curr->rops.cull;
+    }
+
+    /* If current batch is empty or state change not needed: continue batch */
+    if (curr->batch_size == 0 || (memcmp(&ops, &curr->rops, sizeof(ops)) == 0)) {
+        curr->rops = ops;
+    } else {
+        /* Add new batch */
+        xe_gfx_draw_batch *new = &g_r.rpass.batches[++g_r.rpass.head];
+        new->start_offset = g_r.drawlist.head;
+        new->batch_size = 0;
+        new->rops = ops;
+    }
+}
+
 static xe_mesh
 xe_mesh_add(const void *vert, size_t vert_size, const void *indices, size_t indices_size)
 {
 #ifdef XE_DEBUG
     xe_gfx_sync();
 #endif
-    lu_err_expects(vert_size < (XE_VERTICES_MAP_SIZE / 3));
-    lu_err_expects(indices_size < (XE_INDICES_MAP_SIZE / 3));
-
-    xe_mesh mesh = { .idx_count = indices_size / sizeof(xe_gfx_idx)};
-
-    if ((g_r.vertices.head + vert_size) >= XE_VERTICES_MAP_SIZE) {
-        g_r.vertices.head = 0;
+    size_t vert_remaining = ((g_r.phase + 1) * XE_MAX_VERTICES * sizeof(xe_gfx_vtx)) - g_r.vertices.head;
+    size_t indices_remaining = ((g_r.phase + 1) * XE_MAX_INDICES * sizeof(xe_gfx_idx)) - g_r.indices.head;
+    bool enough_space = (vert_size <= vert_remaining) && (indices_size <= indices_remaining);
+    lu_err_assert(enough_space);
+    if (!enough_space) {
+        return (xe_mesh){ .base_vtx = 0, .first_idx = 0, .idx_count = 0 };
     }
-    mesh.base_vtx = g_r.vertices.head / sizeof(xe_gfx_vtx);
-    void *dst = (char*)g_r.vertices.data + g_r.vertices.head;
-    memcpy(dst, vert, vert_size);
+
+    xe_mesh added_mesh = { 
+        .base_vtx = (int)(g_r.vertices.head / sizeof(xe_gfx_vtx)),
+        .first_idx = (int)(g_r.indices.head / sizeof(xe_gfx_idx)),
+        .idx_count = (int)(indices_size / sizeof(xe_gfx_idx))
+    };
+
+    memcpy((char*)g_r.vertices.data + g_r.vertices.head, vert, vert_size);
     g_r.vertices.head += vert_size;
-
-    if ((g_r.indices.head + indices_size) >= XE_INDICES_MAP_SIZE) {
-        g_r.indices.head = 0;
-    }
-    mesh.first_idx = g_r.indices.head / sizeof(xe_gfx_idx);
-    dst = (char*)g_r.indices.data + g_r.indices.head;
-    memcpy(dst, indices, indices_size);
+    memcpy((char*)g_r.indices.data + g_r.indices.head, indices, indices_size);
     g_r.indices.head += indices_size;
-    return mesh;
+    
+    return added_mesh;
 }
 
 static int
@@ -415,8 +449,18 @@ xe_material_add(const xe_gfx_material *mat)
 #ifdef XE_DEBUG
     xe_gfx_sync();
 #endif
-    lu_err_expects(((g_r.uniforms.head - sizeof(xe_shader_data) * g_r.phase - offsetof(xe_shader_data, data)) % sizeof(xe_shader_shape_data)) == 0);
-    xe_shader_shape_data *uniform = (void*)((char*)g_r.uniforms.data + g_r.uniforms.head);
+
+    size_t remaining = ((g_r.phase + 1) * sizeof(xe_shader_data)) - g_r.uniforms.head;
+    bool enough_space = sizeof(xe_shader_shape_data) <= remaining;
+    lu_err_assert(enough_space);
+    if (!enough_space) {
+        return -1;
+    }
+
+    int idx = ((ptrdiff_t)g_r.uniforms.head - g_r.phase * sizeof(xe_shader_data) - offsetof(xe_shader_data, data))
+                / sizeof(xe_shader_shape_data);
+
+    xe_shader_shape_data *uniform = &((xe_shader_data*)g_r.uniforms.data + g_r.phase)->data[idx];
     uniform->model = mat->model;
     uniform->color = mat->color;
     uniform->darkcolor = mat->darkcolor;
@@ -424,23 +468,21 @@ xe_material_add(const xe_gfx_material *mat)
     uniform->albedo_layer = (float)mat->tex.layer;
     uniform->pma = mat->pma;
 
-    int idx = (g_r.uniforms.head - g_r.phase * sizeof(xe_shader_data) - offsetof(xe_shader_data, data)) / sizeof(xe_shader_shape_data);
     g_r.uniforms.head += sizeof(xe_shader_shape_data);
+    
     return idx;
 }
 
-void
-xe_gfx_push(const void *vert, size_t vert_size, const void *indices, size_t indices_size, xe_gfx_material *material)
+static bool
+xe_drawcmd_add(xe_mesh mesh, int draw_id)
 {
-    xe_mesh mesh = xe_mesh_add(vert, vert_size, indices, indices_size);
-    int draw_id = xe_material_add(material);
-
-#ifdef XE_DEBUG
-    xe_gfx_sync();
-#endif
-    size_t frame_start = g_r.phase * (XE_DRAW_INDIRECT_MAP_SIZE / 3);
-    lu_err_expects(g_r.drawlist.head - frame_start < XE_DRAW_INDIRECT_MAP_SIZE / 3);
-
+    size_t remaining = (g_r.phase + 1) * XE_MAX_DRAW_INDIRECT * sizeof(xe_drawcmd) - g_r.drawlist.head;
+    bool enough_space = remaining >= sizeof(xe_drawcmd);
+    lu_err_assert(enough_space);
+    if (!enough_space) {
+        return false;
+    }
+    
     *((xe_drawcmd*)((char*)g_r.drawlist.data + g_r.drawlist.head)) = (xe_drawcmd){
         .element_count = mesh.idx_count,
         .instance_count = 1,
@@ -449,6 +491,17 @@ xe_gfx_push(const void *vert, size_t vert_size, const void *indices, size_t indi
         .draw_index = draw_id
     };
     g_r.drawlist.head += sizeof(xe_drawcmd);
+    g_r.rpass.batches[g_r.rpass.head].batch_size++;
+    return true;
+}
+
+void
+xe_gfx_push(const void *vert, size_t vert_size, const void *indices, size_t indices_size, const xe_gfx_material *material)
+{
+    xe_mesh mesh = xe_mesh_add(vert, vert_size, indices, indices_size);
+    int draw_id = xe_material_add(material);
+    bool draw_cmd_ret = xe_drawcmd_add(mesh, draw_id);
+    lu_err_assert(draw_cmd_ret && "Can not add draw command: draw indirect buffer full.");
 }
 
 void
@@ -456,32 +509,117 @@ xe_gfx_render(void)
 {
     lu_hook_notify(LU_HOOK_PRE_RENDER, &g_r);
 
-    {
-        static int last_w, last_h;
-        if (last_w != g_r.pipeline.target.w || last_h != g_r.pipeline.target.h) {
-            glViewport(0, 0, g_r.pipeline.target.w, g_r.pipeline.target.h);
-            last_w = g_r.pipeline.target.w;
-            last_h = g_r.pipeline.target.h;
-        }
+    lu_err_assert(g_r.drawlist.head ==
+            (g_r.rpass.batches[g_r.rpass.head].start_offset +
+            g_r.rpass.batches[g_r.rpass.head].batch_size * sizeof(xe_drawcmd)));
+
+
+    if (g_r.rpass.viewport.x != g_r.curr_vp.x ||
+            g_r.rpass.viewport.y != g_r.curr_vp.y ||
+            g_r.rpass.viewport.w != g_r.curr_vp.w ||
+            g_r.rpass.viewport.h != g_r.curr_vp.h) {
+        glViewport(g_r.rpass.viewport.x, g_r.rpass.viewport.y, g_r.rpass.viewport.w, g_r.rpass.viewport.h);
+        g_r.curr_vp = g_r.rpass.viewport;
     }
+
+    if (g_r.rpass.bg_color.r != g_r.curr_bgcolor.r ||
+            g_r.rpass.bg_color.g != g_r.curr_bgcolor.g ||
+            g_r.rpass.bg_color.b != g_r.curr_bgcolor.b ||
+            g_r.rpass.bg_color.a != g_r.curr_bgcolor.a) {
+        glClearColor(g_r.rpass.bg_color.r, g_r.rpass.bg_color.g, g_r.rpass.bg_color.b, g_r.rpass.bg_color.a);
+        g_r.curr_bgcolor = g_r.rpass.bg_color;
+    }
+
+    glClear((g_r.rpass.clear_color   * GL_COLOR_BUFFER_BIT) |
+            (g_r.rpass.clear_depth   * GL_DEPTH_BUFFER_BIT) |
+            (g_r.rpass.clear_stencil * GL_STENCIL_BUFFER_BIT));
 
     xe_gfx_sync();
     memcpy((char*)g_r.uniforms.data + g_r.phase * sizeof(xe_shader_data), g_r.view_proj.m, sizeof(g_r.view_proj));
     glBindBufferRange(GL_UNIFORM_BUFFER, 0, g_r.uniforms.id, g_r.phase * sizeof(xe_shader_data), sizeof(xe_shader_data));
 
-    glClear(GL_COLOR_BUFFER_BIT);
+    xe_gfx_rops prev_ops = g_r.curr_ops;
+    const int num_batches = g_r.rpass.head + 1;
+    static const GLenum ELEM_TYPE = sizeof(xe_gfx_idx) == 4 ? GL_UNSIGNED_INT : GL_UNSIGNED_SHORT;
+    for (int i = 0; i < num_batches; ++i) {
+        xe_gfx_draw_batch *draw = &g_r.rpass.batches[i];
 
-    size_t offset = (g_r.phase * (XE_DRAW_INDIRECT_MAP_SIZE / 3));
-    size_t cmdbuf_size = g_r.drawlist.head - offset;
-    lu_err_assert(cmdbuf_size < (XE_DRAW_INDIRECT_MAP_SIZE / 3) && "The draw command list is larger than a third of the mapped buffer.");
-    size_t cmdbuf_count = cmdbuf_size / sizeof(xe_drawcmd);
-    lu_err_assert(cmdbuf_count < XE_MAX_DRAW_INDIRECT);
-    glMultiDrawElementsIndirect(GL_TRIANGLES, sizeof(xe_gfx_idx) == 4 ? GL_UNSIGNED_INT : GL_UNSIGNED_SHORT, (void*)offset, cmdbuf_count, 0);
+        if (memcmp(&draw->rops.clip, &prev_ops.clip, sizeof(draw->rops.clip)) != 0) {
+            if ((draw->rops.clip.x | draw->rops.clip.y |
+                draw->rops.clip.w | draw->rops.clip.h) == 0) {
+                glDisable(GL_SCISSOR_TEST);
+            } else {
+                glEnable(GL_SCISSOR_TEST);
+                glScissor(draw->rops.clip.x, draw->rops.clip.y, draw->rops.clip.w, draw->rops.clip.h);
+            }
+
+            prev_ops.clip = draw->rops.clip;
+        }
+
+        if (!((draw->rops.blend_src == XE_BLEND_UNSET || draw->rops.blend_src == prev_ops.blend_src) &&
+              (draw->rops.blend_dst == XE_BLEND_UNSET || draw->rops.blend_dst == prev_ops.blend_dst))) {
+            if (draw->rops.blend_src == XE_BLEND_DISABLED || draw->rops.blend_dst == XE_BLEND_DISABLED) {
+                glDisable(GL_BLEND);
+                draw->rops.blend_src = XE_BLEND_DISABLED;
+                draw->rops.blend_dst = XE_BLEND_DISABLED;
+            } else {
+                glEnable(GL_BLEND);
+                glBlendFunc(xe__lut_gl_blend[draw->rops.blend_src],
+                            xe__lut_gl_blend[draw->rops.blend_dst]);
+            }
+
+            prev_ops.blend_src = draw->rops.blend_src;
+            prev_ops.blend_dst = draw->rops.blend_dst;
+        }
+
+        if (!(draw->rops.cull == XE_CULL_UNSET || draw->rops.cull == prev_ops.cull)) {
+            if (draw->rops.cull == XE_CULL_NONE) {
+                glDisable(GL_CULL_FACE);
+            } else {
+                glEnable(GL_CULL_FACE);
+                glCullFace(xe__lut_gl_cull[draw->rops.cull]);
+            }
+
+            prev_ops.cull = draw->rops.cull;
+        }
+
+        if (!(draw->rops.depth == XE_DEPTH_UNSET || draw->rops.depth == prev_ops.depth)) {
+            if (draw->rops.depth == XE_DEPTH_DISABLED) {
+                glDisable(GL_DEPTH_TEST);
+            } else {
+                glEnable(GL_DEPTH_TEST);
+                glDepthFunc(xe__lut_gl_depth_fn[draw->rops.depth]);
+            }
+
+            prev_ops.depth = draw->rops.depth;
+        }
+
+        glMultiDrawElementsIndirect(
+                GL_TRIANGLES, ELEM_TYPE,
+                (void*)draw->start_offset,
+                draw->batch_size, 0);
+
+#if XE_VERBOSE
+        lu_log_verbose("\nBatch %d:\ncmd count: %ld\n", i, draw->batch_size);
+#endif
+    }
+
+    g_r.curr_ops = prev_ops;
+
+#if XE_VERBOSE
+    lu_log_verbose("\nTotal:\ncmd count: %ld\nvtx count: %ld\nidx count: %ld\n",
+            (g_r.drawlist.head / sizeof(xe_drawcmd)) % XE_MAX_DRAW_INDIRECT,
+            (g_r.vertices.head / sizeof(xe_gfx_vtx)) % XE_MAX_VERTICES,
+            (g_r.indices.head / sizeof(xe_gfx_idx)) % XE_MAX_INDICES);
+#endif
 
     g_r.fence[g_r.phase] = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
     g_r.phase = (g_r.phase + 1) % 3;
     g_r.uniforms.head = g_r.phase * sizeof(xe_shader_data) + offsetof(xe_shader_data, data);
-    g_r.drawlist.head = g_r.phase * (XE_DRAW_INDIRECT_MAP_SIZE / 3);
+    g_r.drawlist.head = g_r.phase * XE_MAX_DRAW_INDIRECT * sizeof(xe_drawcmd);
+    g_r.vertices.head = g_r.phase * XE_MAX_VERTICES * sizeof(xe_gfx_vtx);
+    g_r.indices.head = g_r.phase * XE_MAX_INDICES * sizeof(xe_gfx_idx);
+
     lu_hook_notify(LU_HOOK_POST_RENDER, &g_r);
 }
 
@@ -505,3 +643,4 @@ xe_gfx_shutdown(void)
     glDeleteProgram(g_r.pipeline.shader.program_id);
     glDeleteVertexArrays(1, &g_r.pipeline.shader.vao_id);
 }
+

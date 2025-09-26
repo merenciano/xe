@@ -317,3 +317,4 @@ xe_transform_rotate(xe_scene_node node, lu_vec3 axis, float rad)
     float mat[16];
     return lu_mat4_multiply(tr, tr, lu_mat4_rotation_axis(mat, &axis.x, rad));
 }
+

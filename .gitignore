@@ -9,4 +9,5 @@ bin/assets/**.atlas
 bin/assets/**.json
 !bin/assets/**.glsl
 build/
+cmake-**/
 out/

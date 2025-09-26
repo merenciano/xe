@@ -15,6 +15,11 @@ target_sources(xe PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/xe_resource.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/xe_platform.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/xe_gfx.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/xe_gfx_helpers.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/xe_scene_internal.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/xe_scene.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/xe_gfx.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/xe_platform.h
 )
 
 target_include_directories(xe PRIVATE
@@ -23,12 +28,14 @@ target_include_directories(xe PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/extern/llulu/include
 )
 
-target_compile_options(xe PRIVATE
-    -Wall
+target_compile_definitions(xe PUBLIC
+    $<$<CONFIG:Debug>:LU_DEBUG>
+    $<$<CONFIG:Debug>:XE_DEBUG>
+    $<$<CONFIG:Debug>:XE_VERBOSE>
 )
 
-add_compile_definitions(
-    $<$<CONFIG:Debug>:XE_DEBUG>
+target_compile_options(xe PRIVATE
+    -Wall
 )
 
 if (WIN32)
