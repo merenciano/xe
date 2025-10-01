@@ -1,4 +1,5 @@
 [submodule "extern/llulu"]
 	path = extern/llulu
-	url = https://x-access-token:${GITHUB_TOKEN}@github.com/merenciano/llulu.git
+	url = https://github.com/merenciano/llulu.git
 	branch = master
+

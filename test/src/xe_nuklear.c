@@ -1,4 +1,7 @@
 #include "xe_nuklear.h"
+#define NK_IMPLEMENTATION
+#include <nuklear.h>
+
 #include <xe_scene.h>
 #include <xe_platform.h>
 #include <../src/xe_scene_internal.h>
@@ -9,19 +12,7 @@
 #include <llulu/lu_math.h>
 #include <llulu/lu_log.h>
 
-#define NK_INCLUDE_FIXED_TYPES
-#define NK_INCLUDE_STANDARD_IO
-#define NK_INCLUDE_STANDARD_VARARGS
-#define NK_INCLUDE_STANDARD_BOOL
-#define NK_INCLUDE_VERTEX_BUFFER_OUTPUT
-#define NK_INCLUDE_DEFAULT_ALLOCATOR     /*  TODO: remove */
-#define NK_INCLUDE_DEFAULT_FONT
-#define NK_INCLUDE_FONT_BAKING
-//#define NK_IMPLEMENTATION
-#include <nuklear.h>
-
 #include <string.h>
-#include <stdlib.h>
 
 enum {
     XE_NK_ARENA_SIZE = LU_MEGABYTES(16),
@@ -47,7 +38,7 @@ xe_nk_arena_alloc(nk_handle userdata, void *ptr, nk_size size)
         new = &g_nuk.mem_arena[*arena_offset];
         *arena_offset += size;
     } else {
-        lu_log_err("Nuklear arena warped.");
+        lu_log_err("Nuklear arena looped: overwrites may occur.");
         new = g_nuk.mem_arena;
         *arena_offset = size;
     }
@@ -133,15 +124,26 @@ xe_nk_render(void)
     config.shape_AA = NK_ANTI_ALIASING_ON;
     config.line_AA = NK_ANTI_ALIASING_ON;
 
-    nk_buffer_init_default(&cmd_buf);
-    nk_buffer_init_default(&vtx_buf);
-    nk_buffer_init_default(&idx_buf);
+    void *vtx_head, *idx_head;
+    size_t vtx_size_rem, idx_size_rem, first_vtx, first_idx;
+    xe__vtxbuf_remaining(&vtx_head, &vtx_size_rem, &first_vtx, &idx_head, &idx_size_rem, &first_idx);
+    nk_buffer_init_fixed(&vtx_buf, vtx_head, vtx_size_rem);
+    static char cmdbuffer[LU_MEGABYTES(2)];
+    nk_buffer_init_fixed(&cmd_buf, cmdbuffer, LU_MEGABYTES(2));
+    //nk_buffer_init_default(&vtx_buf);
+    nk_buffer_init_fixed(&idx_buf, idx_head, idx_size_rem);
     nk_convert(&g_nuk.ctx, &cmd_buf, &vtx_buf, &idx_buf, &config);
+    size_t vsize = nk_buffer_total(&vtx_buf);
+    size_t isize = nk_buffer_total(&idx_buf);
+    xe_mesh mesh = (xe_mesh){.base_vtx = first_vtx, .first_idx = first_idx, .idx_count = isize / sizeof(xe_gfx_idx)};
+    xe__vtxbuf_push_nocheck(vsize, isize);
+#if 0
     xe_mesh mesh =
         xe_mesh_add(nk_buffer_memory(&vtx_buf),
         nk_buffer_total(&vtx_buf),
         nk_buffer_memory(&idx_buf),
         nk_buffer_total(&idx_buf));
+#endif
 
     int first_index = mesh.first_idx;
     const struct nk_draw_command *cmd = NULL;
@@ -195,8 +197,8 @@ xe_nk_render(void)
 
     nk_clear(&g_nuk.ctx);
     nk_buffer_free(&cmd_buf);
-    nk_buffer_free(&vtx_buf);
-    nk_buffer_free(&idx_buf);
+    //nk_buffer_free(&vtx_buf);
+    //nk_buffer_free(&idx_buf);
 }
 
 void
