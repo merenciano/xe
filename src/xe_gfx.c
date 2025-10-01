@@ -95,7 +95,6 @@ typedef struct xe_gl_renderer {
     struct xe_texpool tex;
     int phase; /* for the triphassic fence */
     GLsync fence[3];
-    lu_mat4 view_proj; // TODO: move to scene
     xe_pipeline pipeline;
 
     xe_vbuf vertices;
@@ -109,6 +108,7 @@ typedef struct xe_gl_renderer {
     lu_color curr_bgcolor;
 } xe_gl_renderer;
 
+lu_mat4 view_projection;
 
 static xe_gl_renderer g_r; // Depends on zero init
 
@@ -208,12 +208,6 @@ xe_shader_load_path(const char *vert_path, const char *frag_path)
 static void
 xe_shader_gpu_setup(void)
 {
-    float view[16];
-    float proj[16];
-    lu_mat4_look_at(view, (float[]){0.0f, 0.0f, 2.0f}, (float[]){0.0f, 0.0f, 0.0f}, (float[]){0.0f, 1.0f, 0.0f});
-    lu_mat4_perspective_fov(proj, lu_radians(70.0f), 1920.0f, 1080.0f, 0.1f, 300.0f);
-    lu_mat4_multiply(g_r.view_proj.m, proj, view);
-
     g_r.pipeline.shader.program_id = glCreateProgram();
     xe_shader_load_path(g_r.pipeline.shader.vert_path, g_r.pipeline.shader.frag_path);
 }
@@ -343,6 +337,12 @@ xe_gfx_init(xe_gfx_config *cfg)
     glCreateTextures(GL_TEXTURE_2D_ARRAY, XE_MAX_TEXTURE_ARRAYS, g_r.tex.id);
     glBindTextures(0, XE_MAX_TEXTURE_ARRAYS, g_r.tex.id);
 
+    float view[16];
+    float proj[16];
+    lu_mat4_look_at(view, (float[]){0.0f, 0.0f, 2.0f}, (float[]){0.0f, 0.0f, 0.0f}, (float[]){0.0f, 1.0f, 0.0f});
+    lu_mat4_perspective_fov(proj, lu_radians(70.0f), cfg->viewport.w, cfg->viewport.h, 0.1f, 300.0f);
+    lu_mat4_multiply(view_projection.m, proj, view);
+
     return true;
 }
 
@@ -356,10 +356,13 @@ xe_gfx_pass_begin(lu_rect viewport, lu_color background,
     g_r.rpass.clear_color = clear_color;
     g_r.rpass.clear_depth = clear_depth;
     g_r.rpass.clear_stencil = clear_stencil;
-    g_r.rpass.head = 0;
+    g_r.rpass.head = 1;
     g_r.rpass.batches[0].start_offset = g_r.drawlist.head;
     g_r.rpass.batches[0].batch_size = 0;
     g_r.rpass.batches[0].rops = ops;
+    g_r.rpass.batches[1].start_offset = g_r.drawlist.head;
+    g_r.rpass.batches[1].batch_size = 0;
+    g_r.rpass.batches[1].rops = ops;
 }
 
 void
@@ -565,7 +568,7 @@ xe_gfx_render(void)
             (g_r.rpass.clear_stencil * GL_STENCIL_BUFFER_BIT));
 
     xe_gfx_sync();
-    memcpy((char*)g_r.uniforms.data + g_r.phase * sizeof(xe_shader_data), g_r.view_proj.m, sizeof(g_r.view_proj));
+    memcpy((char*)g_r.uniforms.data + g_r.phase * sizeof(xe_shader_data), view_projection.m, sizeof(view_projection));
     glBindBufferRange(GL_UNIFORM_BUFFER, 0, g_r.uniforms.id, g_r.phase * sizeof(xe_shader_data), sizeof(xe_shader_data));
 
     xe_gfx_rops prev_ops = g_r.curr_ops;
@@ -580,7 +583,7 @@ xe_gfx_render(void)
                 glDisable(GL_SCISSOR_TEST);
             } else {
                 glEnable(GL_SCISSOR_TEST);
-                glScissor(draw->rops.clip.x, draw->rops.clip.y, draw->rops.clip.w, draw->rops.clip.h);
+                glScissor((GLint)draw->rops.clip.x, (GLint)draw->rops.clip.y, (GLint)draw->rops.clip.w, (GLint)draw->rops.clip.h);
             }
 
             prev_ops.clip = draw->rops.clip;

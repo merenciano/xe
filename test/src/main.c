@@ -3,13 +3,12 @@
 #include "xe_scene.h"
 
 #include "xe_spine.h"
-//#include "xe_nuklear.h"
+#include "xe_nuklear.h"
 
 #include <llulu/lu_time.h>
 #include <llulu/lu_math.h>
 #include <spine/spine.h>
 
-#if 0
 #define NK_INCLUDE_FIXED_TYPES
 #define NK_INCLUDE_STANDARD_IO
 #define NK_INCLUDE_STANDARD_VARARGS
@@ -19,7 +18,6 @@
 #define NK_INCLUDE_FONT_BAKING
 #define NK_IMPLEMENTATION
 #include <nuklear.h>
-#endif
 
 #include <stdbool.h>
 #include <stdio.h>
@@ -89,8 +87,8 @@ int main(int argc, char **argv)
 {
     if (!xe_platform_init(&platform, &(xe_platform_config){
             .title = "XE TEST",
-            .display_w = 1200,
-            .display_h = 900,
+            .display_w = 1920,
+            .display_h = 1080,
             .vsync = true,
             .log_filename = "" })) {
         return 1;
@@ -157,15 +155,15 @@ int main(int argc, char **argv)
     elapsed = lu_time_elapsed(timer);
     platform.timers_data.scene_load = elapsed;
 
-    //xe_nk_init(&platform);
+    xe_nk_init(&platform);
 
     platform.timers_data.init_time = lu_time_elapsed(platform.begin_timestamp);
     deltasec = 0.016f;
 
-    lu_color bg = {0.3f, 0.0f, 0.0f, 1.0f};
-    //struct nk_colorf bg = {0.3f, 0.0f, 0.0f, 1.0f};
+    //lu_color bg = {0.3f, 0.0f, 0.0f, 1.0f};
+    struct nk_colorf bg = {0.3f, 0.0f, 0.0f, 1.0f};
     while(!platform.close) {
-#if 0
+#if 1
         struct nk_context *ctx = xe_nk_new_frame();
         /* Systems */
         if (nk_begin(ctx, "Demo", nk_rect(50, 50, 230, 250),
@@ -208,18 +206,18 @@ int main(int argc, char **argv)
             (lu_color){ bg.r, bg.g, bg.b, bg.a},
             true, true, true,
             (xe_gfx_rops){ 
-                .clip = {10,10,1000,800},
-                .blend_src = XE_BLEND_ONE,
-                .blend_dst = XE_BLEND_ONE_MINUS_SRC_ALPHA,
-                .depth = XE_DEPTH_LESS,
-                .cull = XE_CULL_BACK
+                .clip = {0,0,0,0},
+                .blend_src = XE_BLEND_UNSET,
+                .blend_dst = XE_BLEND_UNSET,
+                .depth = XE_DEPTH_UNSET,
+                .cull = XE_CULL_UNSET
             }
         );
 
         xe_spine_animation_pass(deltasec);
         xe_scene_update_world();
         xe_scene_drawable_draw_pass();
-#if 0
+#if 1
         xe_gfx_rops_set((xe_gfx_rops) {
                 .clip = {0,0,0,0},
                 .blend_src = XE_BLEND_ONE,
@@ -229,12 +227,12 @@ int main(int argc, char **argv)
 #endif
         xe_spine_draw_pass();
 
-        //xe_nk_render();
+        xe_nk_render();
         xe_gfx_render();
         deltasec = xe_platform_update();
     }
 
-    //xe_nk_shutdown();
+    xe_nk_shutdown();
     xe_platform_shutdown();
 
     return 0;

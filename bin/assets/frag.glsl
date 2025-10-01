@@ -7,7 +7,7 @@ struct ShapeData {
     int albedo_idx;
     float albedo_layer;
     float pma;
-    float padding;
+    int dark_is_clip;
 };
 
 layout(std140, binding=0) uniform u_data {
