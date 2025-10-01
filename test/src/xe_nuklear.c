@@ -7,10 +7,12 @@
 #include <llulu/lu_defs.h>
 #include <llulu/lu_error.h>
 #include <llulu/lu_math.h>
+#include <llulu/lu_log.h>
 
 #define NK_INCLUDE_FIXED_TYPES
 #define NK_INCLUDE_STANDARD_IO
 #define NK_INCLUDE_STANDARD_VARARGS
+#define NK_INCLUDE_STANDARD_BOOL
 #define NK_INCLUDE_VERTEX_BUFFER_OUTPUT
 #define NK_INCLUDE_DEFAULT_ALLOCATOR     /*  TODO: remove */
 #define NK_INCLUDE_DEFAULT_FONT
@@ -18,63 +20,88 @@
 //#define NK_IMPLEMENTATION
 #include <nuklear.h>
 
-#include <limits.h>
-#include <time.h>
 #include <string.h>
+#include <stdlib.h>
+
+enum {
+    XE_NK_ARENA_SIZE = LU_MEGABYTES(16),
+    XE_NK_FONT_SIZE = 22,
+};
 
 typedef struct xe_nuklear {
-    struct nk_context ctx;
+    const xe_platform *plat;
     struct nk_font_atlas atlas;
-    xe_platform *plat;
-    xe_image default_img;
     struct nk_draw_null_texture tex_null;
+    struct nk_context ctx;
+    char mem_arena[XE_NK_ARENA_SIZE];
 } xe_nuklear;
 
 static xe_nuklear g_nuk;
 
+static void *
+xe_nk_arena_alloc(nk_handle userdata, void *ptr, nk_size size)
+{
+    void *new = NULL;
+    size_t *arena_offset = userdata.ptr;
+    if (*arena_offset + size < XE_NK_ARENA_SIZE) {
+        new = &g_nuk.mem_arena[*arena_offset];
+        *arena_offset += size;
+    } else {
+        lu_log_err("Nuklear arena warped.");
+        new = g_nuk.mem_arena;
+        *arena_offset = size;
+    }
+    return new;
+}
+
+static void
+xe_nk_arena_free(nk_handle h, void *p) { }
+
 void
-xe_nk_init(struct xe_platform *plat)
+xe_nk_init(const xe_platform *plat)
 {
     lu_err_assert(!g_nuk.plat && "Nuklear state should be uninitialized");
     g_nuk.plat = plat;
-    nk_init_default(&g_nuk.ctx, 0);
-    nk_font_atlas_init_default(&g_nuk.atlas);
-    nk_font_atlas_begin(&g_nuk.atlas);
-    struct nk_font *karla = nk_font_atlas_add_from_file(&g_nuk.atlas, "./assets/fonts/Karla-Regular.ttf", 18, 0);
 
-    const void *img_data;
+    size_t arena_offset = 0;
+    nk_handle userdata = nk_handle_ptr(&arena_offset);
+    struct nk_allocator alloc;
+    alloc.userdata = userdata;
+    alloc.alloc = xe_nk_arena_alloc;
+    alloc.free = xe_nk_arena_free;
+
+    nk_font_atlas_init(&g_nuk.atlas, &alloc);
+    nk_font_atlas_begin(&g_nuk.atlas);
+    struct nk_font *karla = nk_font_atlas_add_from_file(
+        &g_nuk.atlas, "./assets/fonts/Karla-Regular.ttf", XE_NK_FONT_SIZE, 0);
     int w, h;
-    img_data = nk_font_atlas_bake(&g_nuk.atlas, &w, &h, NK_FONT_ATLAS_RGBA32);
-    //((unsigned int*)img_data)[0] = 0xFFFFFFFF;
+    const void *img_data = nk_font_atlas_bake(&g_nuk.atlas, &w, &h, NK_FONT_ATLAS_RGBA32);
     lu_err_assert(img_data);
-    xe_image img = xe_image_load_data((void*)img_data, w, h, 4, 0);
-    nk_font_atlas_end(&g_nuk.atlas, nk_handle_id(img.id), &g_nuk.tex_null);
-    /*
+    xe_image img = xe_image_load_data(img_data, w, h, 4, 0);
+    nk_font_atlas_end(&g_nuk.atlas, nk_handle_id((int)img.id), &g_nuk.tex_null);
+    nk_font_atlas_cleanup(&g_nuk.atlas);
+
+    nk_init_fixed(&g_nuk.ctx, g_nuk.mem_arena, XE_NK_ARENA_SIZE, NULL);
+    nk_style_set_font(&g_nuk.ctx, &karla->handle);
+#if 0
+    nk_style_load_all_cursors(&g_nuk.ctx, g_nuk.atlas.cursors);
     if (g_nuk.atlas.default_font) {
         nk_style_set_font(&g_nuk.ctx, &g_nuk.atlas.default_font->handle);
     }
-    */
-    //nk_style_load_all_cursors(&g_nuk.ctx, g_nuk.atlas.cursors);
-    nk_style_set_font(&g_nuk.ctx, &karla->handle);
-
-    /*
-    static uint32_t nuklear_default_image_data[64] = { 0xFFFFFFFF };
-    g_nuk.default_img = xe_image_load_data(nuklear_default_image_data, 8, 8, 4, 0);
-    nk_font_atlas_cleanup(&g_nuk.atlas);
-    */
+#endif
 }
 
 struct nk_context *
 xe_nk_new_frame(void)
 {
-    xe_platform *plat = g_nuk.plat;
+    const xe_platform *plat = g_nuk.plat;
     nk_input_begin(&g_nuk.ctx);
 
-    nk_input_motion(&g_nuk.ctx, plat->mouse_x, plat->mouse_y);
+    nk_input_motion(&g_nuk.ctx, (int)plat->mouse_x, (int)plat->mouse_y);
     nk_input_button(&g_nuk.ctx, NK_BUTTON_LEFT,
-            plat->mouse_x, plat->mouse_y, plat->mouse_left);
+            (int)plat->mouse_x, (int)plat->mouse_y, plat->mouse_left);
     nk_input_button(&g_nuk.ctx, NK_BUTTON_RIGHT,
-            plat->mouse_x, plat->mouse_y, plat->mouse_right);
+            (int)plat->mouse_x, (int)plat->mouse_y, plat->mouse_right);
 
     nk_input_end(&g_nuk.ctx);
     return &g_nuk.ctx;
@@ -122,7 +149,8 @@ xe_nk_render(void)
     lu_mat4 inv_vp;
     lu_mat4_inverse(inv_vp.m, view_projection.m);
 
-    lu_mat4 ui_vp = LU_MAT4_IDENTITY;
+    lu_mat4 ui_vp;
+    lu_mat4_identity(ui_vp.m);
     ui_vp.m[0] = 2.0f / (float)g_nuk.plat->viewport_w;
     ui_vp.m[5] = -2.0f / (float)g_nuk.plat->viewport_h;
     ui_vp.m[10] = -1.0f;

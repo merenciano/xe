@@ -92,7 +92,7 @@ xe_image_generate_texture(struct xe_res_image *img)
 }
 
 xe_image
-xe_image_load_data(void *pix_data, int w, int h, int c, int tex_flags)
+xe_image_load_data(const void *pix_data, int w, int h, int c, int tex_flags)
 {
     if (!pix_data) {
         lu_log_err("Could not load image from NULL pixel data.");
@@ -145,7 +145,7 @@ xe_image_load(const char *path, int tex_flags)
         img->flags = tex_flags;
         xe_image_generate_texture(img);
         lu_err_assert(img->res.state == XE_RS_COMMITED);
-        stbi_image_free(img->data);
+        stbi_image_free((stbi_uc*)img->data);
         img->data = NULL;
     }
 

@@ -240,7 +240,7 @@ xe_gfx_tex_alloc(xe_gfx_texfmt fmt)
 }
 
 void
-xe_gfx_tex_load(xe_gfx_tex tex, void *data)
+xe_gfx_tex_load(xe_gfx_tex tex, const void *data)
 {
     lu_err_assert(tex.idx < XE_MAX_TEXTURE_ARRAYS && tex.layer < XE_MAX_TEXTURE_LAYERS);
     const xe_gfx_texfmt *fmt = &g_r.tex.fmt[tex.idx];
