@@ -394,31 +394,50 @@ xe_gfx_rops_set(xe_gfx_rops ops)
     }
 }
 
-xe_mesh
-xe_mesh_add(const void *vert, size_t vert_size, const void *indices, size_t indices_size)
+void
+xe__vtxbuf_remaining(void **out_vtx, size_t *out_vtx_rem, size_t *out_first_vtx,
+                     void **out_idx, size_t *out_idx_rem, size_t *out_first_idx)
 {
 #ifdef XE_DEBUG
     xe_gfx_sync();
 #endif
-    size_t vert_remaining = ((g_r.phase + 1) * XE_MAX_VERTICES * sizeof(xe_gfx_vtx)) - g_r.vertices.head;
-    size_t indices_remaining = ((g_r.phase + 1) * XE_MAX_INDICES * sizeof(xe_gfx_idx)) - g_r.indices.head;
-    bool enough_space = (vert_size <= vert_remaining) && (indices_size <= indices_remaining);
+    *out_vtx_rem = ((g_r.phase + 1) * XE_MAX_VERTICES * sizeof(xe_gfx_vtx)) - g_r.vertices.head;
+    *out_idx_rem = ((g_r.phase + 1) * XE_MAX_INDICES * sizeof(xe_gfx_idx)) - g_r.indices.head;
+    *out_vtx = (char*)g_r.vertices.data + g_r.vertices.head;
+    *out_idx = (char*)g_r.indices.data + g_r.indices.head;
+    *out_first_vtx = g_r.vertices.head / sizeof(xe_gfx_vtx);
+    *out_first_idx = g_r.indices.head / sizeof(xe_gfx_idx);
+}
+
+void
+xe__vtxbuf_push_nocheck(size_t vtx_bytes, size_t idx_bytes)
+{
+    g_r.vertices.head += vtx_bytes;
+    g_r.indices.head += idx_bytes;
+}
+
+xe_mesh
+xe_mesh_add(const void *vert, size_t vert_size, const void *indices, size_t indices_size)
+{
+    void *vtx_head, *idx_head;
+    size_t vtx_rem, idx_rem, base_vtx, base_idx;
+    xe__vtxbuf_remaining(&vtx_head, &vtx_rem, &base_vtx, &idx_head, &idx_rem, &base_idx);
+    lu_err_assert(vtx_head && idx_head);
+    bool enough_space = (vert_size <= vtx_rem) && (indices_size <= idx_rem);
     lu_err_assert(enough_space);
     if (!enough_space) {
         return (xe_mesh){ .base_vtx = 0, .first_idx = 0, .idx_count = 0 };
     }
 
     xe_mesh added_mesh = { 
-        .base_vtx = (int)(g_r.vertices.head / sizeof(xe_gfx_vtx)),
-        .first_idx = (int)(g_r.indices.head / sizeof(xe_gfx_idx)),
+        .base_vtx = base_vtx,
+        .first_idx = base_idx,
         .idx_count = (int)(indices_size / sizeof(xe_gfx_idx))
     };
 
-    memcpy((char*)g_r.vertices.data + g_r.vertices.head, vert, vert_size);
-    g_r.vertices.head += vert_size;
-    memcpy((char*)g_r.indices.data + g_r.indices.head, indices, indices_size);
-    g_r.indices.head += indices_size;
-    
+    memcpy(vtx_head, vert, vert_size);
+    memcpy(idx_head, indices, indices_size);
+    xe__vtxbuf_push_nocheck(vert_size, indices_size);
     return added_mesh;
 }
 
