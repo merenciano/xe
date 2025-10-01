@@ -1,4 +1,5 @@
 #include "xe_gfx.h"
+#include "xe_gfx_internal.h"
 #include "xe_gfx_helpers.h"
 #include "xe_platform.h"
 
@@ -30,12 +31,6 @@ enum {
     XE_MAX_ERROR_MSG_LEN = 2048,
     XE_MAX_SYNC_TIMEOUT_NANOSEC = 50000000
 };
-
-typedef struct xe_mesh {
-    int base_vtx;
-    int first_idx;
-    int idx_count;
-} xe_mesh;
 
 typedef struct xe_shader_shape_data {
     lu_mat4 model;
@@ -81,7 +76,7 @@ enum {
 
 typedef struct xe_vbuf {
     void *data;
-    size_t head;
+    ptrdiff_t head;
     uint32_t id;
 } xe_vbuf;
 
@@ -283,46 +278,27 @@ xe_gfx_init(xe_gfx_config *cfg)
     g_r.pipeline.shader.vert_path = cfg->vert_shader_path;
     g_r.pipeline.shader.frag_path = cfg->frag_shader_path;
 
-    /* Depth test */
-    if (cfg->default_ops.depth == XE_DEPTH_DISABLED) {
-        glDisable(GL_DEPTH_TEST);
-    } else if (cfg->default_ops.depth != XE_DEPTH_UNSET) {
-        glEnable(GL_DEPTH_TEST);
-        glDepthFunc(xe__lut_gl_depth_fn[cfg->default_ops.depth]);
-    }
-
-    /* Blending */
-    if (cfg->default_ops.blend_src == XE_BLEND_DISABLED ||
-        cfg->default_ops.blend_dst == XE_BLEND_DISABLED) {
-        glDisable(GL_BLEND);
-    } else if (cfg->default_ops.blend_src && cfg->default_ops.blend_dst) {
-        glEnable(GL_BLEND);
-        glBlendFunc(xe__lut_gl_blend[cfg->default_ops.blend_src],
-                    xe__lut_gl_blend[cfg->default_ops.blend_dst]);
-    }
-
-    /* Face culling */
-    if (cfg->default_ops.cull == XE_CULL_NONE) {
-        glDisable(GL_CULL_FACE);
-    } else if (cfg->default_ops.cull != XE_CULL_UNSET) {
-        glEnable(GL_CULL_FACE);
-        glCullFace(xe__lut_gl_cull[cfg->default_ops.cull]);
-    }
-    
-    /* Clipping */
-    if ((cfg->default_ops.clip.x | cfg->default_ops.clip.y |
-         cfg->default_ops.clip.w | cfg->default_ops.clip.h) == 0) {
-        glDisable(GL_SCISSOR_TEST);
-    } else {
-        glEnable(GL_SCISSOR_TEST);
-        glScissor(cfg->default_ops.clip.x, cfg->default_ops.clip.y, cfg->default_ops.clip.w, cfg->default_ops.clip.h); 
-    }
-
-    g_r.curr_ops = cfg->default_ops;
-    glClearColor(cfg->background_color.r, cfg->background_color.g, cfg->background_color.b, cfg->background_color.a);
     glViewport(cfg->viewport.x, cfg->viewport.y, cfg->viewport.w, cfg->viewport.h);
-    g_r.curr_bgcolor = cfg->background_color;
     g_r.curr_vp = cfg->viewport;
+    glClearColor(0.0f, 0.0f, 0.4f, 1.0f);
+    g_r.curr_bgcolor = (lu_color){0.0f, 0.0f, 0.4f, 1.0f};
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+    glBlendEquation(GL_FUNC_ADD);
+    glDisable(GL_CULL_FACE);
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_SCISSOR_TEST);
+    glDisable(GL_DEPTH_WRITEMASK);
+    glDisable(GL_STENCIL_TEST);
+    glDisable(GL_STENCIL_WRITEMASK);
+    g_r.curr_ops = (xe_gfx_rops){
+        .clip = {0,0,0,0},
+        .blend_src = XE_BLEND_ONE,
+        .blend_dst = XE_BLEND_ONE_MINUS_SRC_ALPHA,
+        .cull = XE_CULL_NONE,
+        .depth = XE_DEPTH_DISABLED
+    };
+
 
     /* Persistent mapped buffers for vertices, indices uniforms and indirect draw commands. */
     GLuint buf_id[4];
@@ -415,7 +391,7 @@ xe_gfx_rops_set(xe_gfx_rops ops)
     }
 }
 
-static xe_mesh
+xe_mesh
 xe_mesh_add(const void *vert, size_t vert_size, const void *indices, size_t indices_size)
 {
 #ifdef XE_DEBUG
@@ -443,7 +419,7 @@ xe_mesh_add(const void *vert, size_t vert_size, const void *indices, size_t indi
     return added_mesh;
 }
 
-static int
+int
 xe_material_add(const xe_gfx_material *mat)
 {
 #ifdef XE_DEBUG
@@ -457,10 +433,12 @@ xe_material_add(const xe_gfx_material *mat)
         return -1;
     }
 
-    int idx = ((ptrdiff_t)g_r.uniforms.head - g_r.phase * sizeof(xe_shader_data) - offsetof(xe_shader_data, data))
-                / sizeof(xe_shader_shape_data);
+    //int idx = ((ptrdiff_t)g_r.uniforms.head - g_r.phase * sizeof(xe_shader_data) - offsetof(xe_shader_data, data))
+    //            / sizeof(xe_shader_shape_data);
 
-    xe_shader_shape_data *uniform = &((xe_shader_data*)g_r.uniforms.data + g_r.phase)->data[idx];
+    //int index = g_r.uniforms.head - ((((char*)g_r.uniforms.data) + g_r.phase * sizeof(xe_shader_data)) + offsetof(xe_shader_data, data));
+
+    xe_shader_shape_data *uniform = (void*)((char*)g_r.uniforms.data + g_r.uniforms.head);
     uniform->model = mat->model;
     uniform->color = mat->color;
     uniform->darkcolor = mat->darkcolor;
@@ -468,12 +446,13 @@ xe_material_add(const xe_gfx_material *mat)
     uniform->albedo_layer = (float)mat->tex.layer;
     uniform->pma = mat->pma;
 
+    size_t index = ((char*)(void*)uniform - ((char*)g_r.uniforms.data + g_r.phase * sizeof(xe_shader_data) + offsetof(xe_shader_data, data))) / sizeof(xe_shader_shape_data);
     g_r.uniforms.head += sizeof(xe_shader_shape_data);
     
-    return idx;
+    return (int)index;
 }
 
-static bool
+bool
 xe_drawcmd_add(xe_mesh mesh, int draw_id)
 {
     size_t remaining = (g_r.phase + 1) * XE_MAX_DRAW_INDIRECT * sizeof(xe_drawcmd) - g_r.drawlist.head;
@@ -482,7 +461,7 @@ xe_drawcmd_add(xe_mesh mesh, int draw_id)
     if (!enough_space) {
         return false;
     }
-    
+
     *((xe_drawcmd*)((char*)g_r.drawlist.data + g_r.drawlist.head)) = (xe_drawcmd){
         .element_count = mesh.idx_count,
         .instance_count = 1,
@@ -521,6 +500,57 @@ xe_gfx_render(void)
         glViewport(g_r.rpass.viewport.x, g_r.rpass.viewport.y, g_r.rpass.viewport.w, g_r.rpass.viewport.h);
         g_r.curr_vp = g_r.rpass.viewport;
     }
+
+    if (memcmp(&g_r.rpass.batches[0].rops.clip, &g_r.curr_ops.clip, sizeof(g_r.rpass.batches[0].rops.clip)) != 0) {
+        if ((g_r.rpass.batches[0].rops.clip.x | g_r.rpass.batches[0].rops.clip.y |
+            g_r.rpass.batches[0].rops.clip.w | g_r.rpass.batches[0].rops.clip.h) == 0) {
+            glDisable(GL_SCISSOR_TEST);
+        } else {
+            glEnable(GL_SCISSOR_TEST);
+            glScissor(g_r.rpass.batches[0].rops.clip.x, g_r.rpass.batches[0].rops.clip.y, g_r.rpass.batches[0].rops.clip.w, g_r.rpass.batches[0].rops.clip.h);
+        }
+
+        g_r.curr_ops.clip = g_r.rpass.batches[0].rops.clip;
+    }
+
+    if (!((g_r.rpass.batches[0].rops.blend_src == XE_BLEND_UNSET || g_r.rpass.batches[0].rops.blend_src == g_r.curr_ops.blend_src) &&
+            (g_r.rpass.batches[0].rops.blend_dst == XE_BLEND_UNSET || g_r.rpass.batches[0].rops.blend_dst == g_r.curr_ops.blend_dst))) {
+        if (g_r.rpass.batches[0].rops.blend_src == XE_BLEND_DISABLED || g_r.rpass.batches[0].rops.blend_dst == XE_BLEND_DISABLED) {
+            glDisable(GL_BLEND);
+            g_r.rpass.batches[0].rops.blend_src = XE_BLEND_DISABLED;
+            g_r.rpass.batches[0].rops.blend_dst = XE_BLEND_DISABLED;
+        } else {
+            glEnable(GL_BLEND);
+            glBlendFunc(xe__lut_gl_blend[g_r.rpass.batches[0].rops.blend_src],
+                        xe__lut_gl_blend[g_r.rpass.batches[0].rops.blend_dst]);
+        }
+
+        g_r.curr_ops.blend_src = g_r.rpass.batches[0].rops.blend_src;
+        g_r.curr_ops.blend_dst = g_r.rpass.batches[0].rops.blend_dst;
+    }
+
+    if (!(g_r.rpass.batches[0].rops.cull == XE_CULL_UNSET || g_r.rpass.batches[0].rops.cull == g_r.curr_ops.cull)) {
+        if (g_r.rpass.batches[0].rops.cull == XE_CULL_NONE) {
+            glDisable(GL_CULL_FACE);
+        } else {
+            glEnable(GL_CULL_FACE);
+            glCullFace(xe__lut_gl_cull[g_r.rpass.batches[0].rops.cull]);
+        }
+
+        g_r.curr_ops.cull = g_r.rpass.batches[0].rops.cull;
+    }
+
+    if (!(g_r.rpass.batches[0].rops.depth == XE_DEPTH_UNSET || g_r.rpass.batches[0].rops.depth == g_r.curr_ops.depth)) {
+        if (g_r.rpass.batches[0].rops.depth == XE_DEPTH_DISABLED) {
+            glDisable(GL_DEPTH_TEST);
+        } else {
+            glEnable(GL_DEPTH_TEST);
+            glDepthFunc(xe__lut_gl_depth_fn[g_r.rpass.batches[0].rops.depth]);
+        }
+
+        g_r.curr_ops.depth = g_r.rpass.batches[0].rops.depth;
+    }
+
 
     if (g_r.rpass.bg_color.r != g_r.curr_bgcolor.r ||
             g_r.rpass.bg_color.g != g_r.curr_bgcolor.g ||

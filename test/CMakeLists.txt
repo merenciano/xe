@@ -6,6 +6,8 @@ target_sources(xet PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/main.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/xe_spine.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/xe_spine.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/xe_nuklear.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/xe_nuklear.h
 )
 
 target_include_directories(xet PRIVATE

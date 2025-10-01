@@ -56,8 +56,8 @@ xe_pixel_format_from_ch(int ch)
     return formats[ch];
 }
 
-xe_image
-xe_image_load(const char *path, int tex_flags)
+static xe_image
+xe_image_handle_new(void)
 {
     xe_image hnd = {.id = XE_MAX_IMAGES};
     struct xe_res_image *img = NULL;
@@ -71,34 +71,84 @@ xe_image_load(const char *path, int tex_flags)
         }
     }
 
-    if (img) {
-        img->path = path;
-        img->res.state = XE_RS_LOADING;
-        int w, h, c;
-        img->data = stbi_load(img->path, &w, &h, &c, 0);
-        if (!img->data) {
-            lu_log_err("Could not load image %s.", img->path);
-            img->res.state = XE_RS_FAILED;
-        } else {
-            img->flags = tex_flags;
-            img->w = w;
-            img->h = h;
-            img->c = c;
-            img->tex = xe_gfx_tex_alloc((xe_gfx_texfmt){
-                .width = img->w,
-                .height = img->h,
-                .format = xe_pixel_format_from_ch(img->c),
-                .flags = 0  // Don't forward flags that prevent textures from grouping in arrays
-            });
-            lu_err_assert(img->tex.idx >= 0);
-            img->res.state = XE_RS_STAGED;
+    return hnd;
+}
 
-            xe_gfx_tex_load(img->tex, img->data);
-            stbi_image_free(img->data);
-            img->data = NULL;
-            img->res.state = XE_RS_COMMITED;
-        }
+static void
+xe_image_generate_texture(struct xe_res_image *img)
+{
+    lu_err_assert(img && img->data);
+    lu_err_assert(img->res.state == XE_RS_LOADING);
+    img->tex = xe_gfx_tex_alloc((xe_gfx_texfmt){
+        .width = img->w,
+        .height = img->h,
+        .format = xe_pixel_format_from_ch(img->c),
+        .flags = 0  // Don't forward flags that prevent textures from grouping in arrays
+    });
+    lu_err_assert(img->tex.idx >= 0);
+    img->res.state = XE_RS_STAGED;
+    xe_gfx_tex_load(img->tex, img->data);
+    img->res.state = XE_RS_COMMITED;
+}
+
+xe_image
+xe_image_load_data(void *pix_data, int w, int h, int c, int tex_flags)
+{
+    if (!pix_data) {
+        lu_log_err("Could not load image from NULL pixel data.");
+        return (xe_image){ .id = XE_MAX_IMAGES };
+    }
+
+    xe_image hnd = xe_image_handle_new();
+
+    if (hnd.id != XE_MAX_IMAGES) {
+        struct xe_res_image *img = (void*)xe_image_ptr(hnd);
+        img->path = "";
+        img->data = pix_data;
+        img->res.state = XE_RS_LOADING;
+        img->flags = tex_flags;
+        img->w = w;
+        img->h = h;
+        img->c = c;
+        xe_image_generate_texture(img);
+        lu_err_assert(img->res.state == XE_RS_COMMITED);
     }
 
     return hnd;
 }
+
+xe_image
+xe_image_load(const char *path, int tex_flags)
+{
+    if (!path || !*path) {
+        lu_log_err("Can not load image from NULL or empty path.");
+        return (xe_image){ .id = XE_MAX_IMAGES };
+    }
+
+    xe_image hnd = xe_image_handle_new();
+
+    if (hnd.id != XE_MAX_IMAGES) {
+        struct xe_res_image *img = (void*)xe_image_ptr(hnd);
+        img->res.state = XE_RS_LOADING;
+        int w, h, c;
+        img->data = stbi_load(path, &w, &h, &c, 0);
+        if (!img->data) {
+            lu_log_err("Could not load image %s.", path);
+            img->res.state = XE_RS_FAILED;
+            return hnd;
+        }
+
+        img->path = path;
+        img->w = w;
+        img->h = h;
+        img->c = c;
+        img->flags = tex_flags;
+        xe_image_generate_texture(img);
+        lu_err_assert(img->res.state == XE_RS_COMMITED);
+        stbi_image_free(img->data);
+        img->data = NULL;
+    }
+
+    return hnd;
+}
+
