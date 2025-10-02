@@ -3,22 +3,11 @@
 #include "xe_scene.h"
 
 #include "xe_spine.h"
-#include "xe_nuklear.h"
+#include "xe_nuklear_incl.h"
 
 #include <llulu/lu_time.h>
 #include <llulu/lu_math.h>
 #include <spine/spine.h>
-
-#define NK_INCLUDE_FIXED_TYPES
-#define NK_INCLUDE_STANDARD_IO
-#define NK_INCLUDE_STANDARD_VARARGS
-#define NK_INCLUDE_STANDARD_BOOL
-#define NK_INCLUDE_VERTEX_BUFFER_OUTPUT
-#define NK_INCLUDE_DEFAULT_ALLOCATOR     /*  TODO: remove */
-#define NK_INCLUDE_DEFAULT_FONT
-#define NK_INCLUDE_FONT_BAKING
-#define NK_IMPLEMENTATION
-#include <nuklear.h>
 
 #include <stdbool.h>
 #include <stdio.h>

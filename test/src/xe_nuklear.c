@@ -16,6 +16,7 @@
 
 enum {
     XE_NK_ARENA_SIZE = LU_MEGABYTES(16),
+    XE_NK_CMDBUF_SIZE = LU_MEGABYTES(1),
     XE_NK_FONT_SIZE = 22,
 };
 
@@ -54,6 +55,7 @@ xe_nk_init(const xe_platform *plat)
     lu_err_assert(!g_nuk.plat && "Nuklear state should be uninitialized");
     g_nuk.plat = plat;
 
+    /* Using the memory arena for font atlas creation before passing to nk_context */
     size_t arena_offset = 0;
     nk_handle userdata = nk_handle_ptr(&arena_offset);
     struct nk_allocator alloc;
@@ -71,7 +73,7 @@ xe_nk_init(const xe_platform *plat)
     xe_image img = xe_image_load_data(img_data, w, h, 4, 0);
     nk_font_atlas_end(&g_nuk.atlas, nk_handle_id((int)img.id), &g_nuk.tex_null);
     nk_font_atlas_cleanup(&g_nuk.atlas);
-
+    /* Atlas created, now handing the mem_arena to nk_ctx */
     nk_init_fixed(&g_nuk.ctx, g_nuk.mem_arena, XE_NK_ARENA_SIZE, NULL);
     nk_style_set_font(&g_nuk.ctx, &karla->handle);
 #if 0
@@ -98,9 +100,29 @@ xe_nk_new_frame(void)
     return &g_nuk.ctx;
 }
 
+static inline void
+xe__nk_get_transform(lu_mat4 *out_matrix)
+{
+    /* projection matrix expected for widget rendering */
+    lu_mat4_identity(out_matrix->m);
+    out_matrix->m[0] = 2.0f / (float)g_nuk.plat->viewport_w;
+    out_matrix->m[5] = -2.0f / (float)g_nuk.plat->viewport_h;
+    out_matrix->m[10] = -1.0f;
+    out_matrix->m[12] = -1.0f;
+    out_matrix->m[13] = 1.0f;
+
+    /* Since I do not want to swap shaders between scene and UI,
+     * I need to 'stack' the negation of the scene's view * projection matrix
+     * and the projection for the widgets, all in the 'model' transform. */
+    lu_mat4 inv_vp;
+    lu_mat4_inverse(inv_vp.m, view_projection.m);
+    lu_mat4_multiply(out_matrix->m, inv_vp.m, out_matrix->m);
+}
+
 void
 xe_nk_render(void)
 {
+    static char cmdbuf_memory[XE_NK_CMDBUF_SIZE];
     static const struct nk_draw_vertex_layout_element vertex_layout[] = {
         {NK_VERTEX_POSITION, NK_FORMAT_FLOAT, NK_OFFSETOF(xe_gfx_vtx, x)},
         {NK_VERTEX_TEXCOORD, NK_FORMAT_FLOAT, NK_OFFSETOF(xe_gfx_vtx, u)},
@@ -108,14 +130,11 @@ xe_nk_render(void)
         {NK_VERTEX_LAYOUT_END}
     };
 
-    struct nk_buffer cmd_buf;
-    struct nk_buffer vtx_buf;
-    struct nk_buffer idx_buf;
     struct nk_convert_config config = {0};
     memset(&config, 0, sizeof(config));
     config.vertex_layout = vertex_layout;
     config.vertex_size = sizeof(xe_gfx_vtx);
-    config.vertex_alignment = __alignof(xe_gfx_vtx);
+    config.vertex_alignment = NK_ALIGNOF(xe_gfx_vtx);
     config.tex_null = g_nuk.tex_null;
     config.circle_segment_count = 22;
     config.curve_segment_count = 22;
@@ -127,47 +146,33 @@ xe_nk_render(void)
     void *vtx_head, *idx_head;
     size_t vtx_size_rem, idx_size_rem, first_vtx, first_idx;
     xe__vtxbuf_remaining(&vtx_head, &vtx_size_rem, &first_vtx, &idx_head, &idx_size_rem, &first_idx);
+
+    struct nk_buffer cmd_buf, vtx_buf, idx_buf;
+    nk_buffer_init_fixed(&cmd_buf, cmdbuf_memory, XE_NK_CMDBUF_SIZE);
     nk_buffer_init_fixed(&vtx_buf, vtx_head, vtx_size_rem);
-    static char cmdbuffer[LU_MEGABYTES(2)];
-    nk_buffer_init_fixed(&cmd_buf, cmdbuffer, LU_MEGABYTES(2));
-    //nk_buffer_init_default(&vtx_buf);
     nk_buffer_init_fixed(&idx_buf, idx_head, idx_size_rem);
     nk_convert(&g_nuk.ctx, &cmd_buf, &vtx_buf, &idx_buf, &config);
+
     size_t vsize = nk_buffer_total(&vtx_buf);
     size_t isize = nk_buffer_total(&idx_buf);
-    xe_mesh mesh = (xe_mesh){.base_vtx = first_vtx, .first_idx = first_idx, .idx_count = isize / sizeof(xe_gfx_idx)};
+    xe_mesh mesh = (xe_mesh){
+        .base_vtx = (int)first_vtx,
+        .first_idx = (int)first_idx,
+        .idx_count = isize / sizeof(xe_gfx_idx)
+    };
     xe__vtxbuf_push_nocheck(vsize, isize);
-#if 0
-    xe_mesh mesh =
-        xe_mesh_add(nk_buffer_memory(&vtx_buf),
-        nk_buffer_total(&vtx_buf),
-        nk_buffer_memory(&idx_buf),
-        nk_buffer_total(&idx_buf));
-#endif
-
-    int first_index = mesh.first_idx;
-    const struct nk_draw_command *cmd = NULL;
-
-    lu_mat4 inv_vp;
-    lu_mat4_inverse(inv_vp.m, view_projection.m);
 
     lu_mat4 ui_vp;
-    lu_mat4_identity(ui_vp.m);
-    ui_vp.m[0] = 2.0f / (float)g_nuk.plat->viewport_w;
-    ui_vp.m[5] = -2.0f / (float)g_nuk.plat->viewport_h;
-    ui_vp.m[10] = -1.0f;
-    ui_vp.m[12] = -1.0f;
-    ui_vp.m[13] = 1.0f;
-
-    lu_mat4_multiply(ui_vp.m, inv_vp.m, ui_vp.m);
-
+    xe__nk_get_transform(&ui_vp);
+    int first_index = mesh.first_idx;
+    const struct nk_draw_command *cmd = NULL;
     nk_draw_foreach(cmd, &g_nuk.ctx, &cmd_buf) {
         if (!cmd->elem_count) {
             continue;
         }
         xe_gfx_rops_set((xe_gfx_rops){
             .clip = {
-                .x = cmd->clip_rect.x > 0.0f ? (uint16_t)cmd->clip_rect.x : 0,
+                .x = cmd->clip_rect.x > 0.0f ? (uint16_t)cmd->clip_rect.x : 0, /* TODO: use int32 clip values for config */
                 .y = cmd->clip_rect.y > 0.0f ? g_nuk.plat->window_h - (uint16_t)(cmd->clip_rect.y + cmd->clip_rect.h) : 0,
                 .w = (uint16_t)cmd->clip_rect.w,
                 .h = (uint16_t)cmd->clip_rect.h
@@ -196,9 +201,6 @@ xe_nk_render(void)
     }
 
     nk_clear(&g_nuk.ctx);
-    nk_buffer_free(&cmd_buf);
-    //nk_buffer_free(&vtx_buf);
-    //nk_buffer_free(&idx_buf);
 }
 
 void
@@ -207,4 +209,3 @@ xe_nk_shutdown(void)
     nk_font_atlas_clear(&g_nuk.atlas);
     nk_free(&g_nuk.ctx);
 }
-
