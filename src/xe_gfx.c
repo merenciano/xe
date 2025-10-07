@@ -363,6 +363,7 @@ xe_gfx_pass_begin(lu_rect viewport, lu_color background,
     g_r.rpass.batches[1].start_offset = g_r.drawlist.head;
     g_r.rpass.batches[1].batch_size = 0;
     g_r.rpass.batches[1].rops = ops;
+    xe_gfx_sync();
 }
 
 void

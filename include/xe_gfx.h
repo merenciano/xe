@@ -163,4 +163,3 @@ void xe_gfx_push(const void *vert, size_t vert_size, const void *indices, size_t
 void xe_gfx_render(void);
 
 #endif /* XE_GFX_H */
-

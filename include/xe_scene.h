@@ -1,5 +1,5 @@
-#ifndef __XE_SCENE_H__
-#define __XE_SCENE_H__
+#ifndef XE_SCENE_H
+#define XE_SCENE_H
 
 #include <llulu/lu_math.h>
 
@@ -58,4 +58,4 @@ const float *xe_transform_set_scale(xe_scene_node node, float x, float y, float 
 const float *xe_transform_set_rotation_x(xe_scene_node node, float rad);
 const float *xe_transform_set_rotation_y(xe_scene_node node, float rad);
 const float *xe_transform_set_rotation_z(xe_scene_node node, float rad);
-#endif /* __XE_SCENE_H__ */
+#endif /* XE_SCENE_H */

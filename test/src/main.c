@@ -3,11 +3,12 @@
 #include "xe_scene.h"
 
 #include "xe_spine.h"
-#include "xe_nuklear_incl.h"
+#include "xe_nuklear.h"
 
 #include <llulu/lu_time.h>
 #include <llulu/lu_math.h>
 #include <spine/spine.h>
+#include <nuklear.h>
 
 #include <stdbool.h>
 #include <stdio.h>
@@ -150,10 +151,8 @@ int main(int argc, char **argv)
     platform.timers_data.init_time = lu_time_elapsed(platform.begin_timestamp);
     deltasec = 0.016f;
 
-    //lu_color bg = {0.3f, 0.0f, 0.0f, 1.0f};
     struct nk_colorf bg = {0.3f, 0.0f, 0.0f, 1.0f};
     while(!platform.close) {
-#if 1
         struct nk_context *ctx = xe_nk_new_frame();
         /* Systems */
         if (nk_begin(ctx, "Demo", nk_rect(50, 50, 230, 250),
@@ -189,8 +188,7 @@ int main(int argc, char **argv)
             }
         }
         nk_end(ctx);
-#endif
-        xe_gfx_sync();
+
         xe_gfx_pass_begin(
             (lu_rect){0, 0, platform.viewport_w, platform.viewport_h},
             (lu_color){ bg.r, bg.g, bg.b, bg.a},
@@ -207,14 +205,12 @@ int main(int argc, char **argv)
         xe_spine_animation_pass(deltasec);
         xe_scene_update_world();
         xe_scene_drawable_draw_pass();
-#if 1
         xe_gfx_rops_set((xe_gfx_rops) {
                 .clip = {0,0,0,0},
                 .blend_src = XE_BLEND_ONE,
                 .blend_dst = XE_BLEND_ONE_MINUS_SRC_ALPHA,
                 .depth = XE_DEPTH_UNSET,
                 .cull = XE_CULL_UNSET });
-#endif
         xe_spine_draw_pass();
 
         xe_nk_render();

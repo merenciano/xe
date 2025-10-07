@@ -8,7 +8,6 @@ target_sources(xet PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/xe_spine.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/xe_nuklear.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/xe_nuklear.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/xe_nuklear_incl.h
 )
 
 target_include_directories(xet PRIVATE

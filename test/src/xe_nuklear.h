@@ -1,6 +1,10 @@
 #ifndef XE_NUKLEAR_H
 #define XE_NUKLEAR_H
 
+#ifdef NK_NUKLEAR_H_
+#error "nuklear.h has to be included AFTER xe_nuklear.h"
+#endif
+
 #define NK_INCLUDE_STANDARD_IO
 #define NK_INCLUDE_STANDARD_VARARGS
 #define NK_INCLUDE_STANDARD_BOOL
