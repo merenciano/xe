@@ -36,10 +36,10 @@ struct xe_resource {
 };
 
 struct xe_res_image {
-    struct xe_resource res;
+    xe_resource res;
     xe_gfx_tex tex;
     const char *path;
-    void *data;
+    const void *data;
     uint16_t w;
     uint16_t h;
     uint16_t c; /* channels */

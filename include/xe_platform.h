@@ -3,6 +3,7 @@
 
 #include <llulu/lu_time.h>
 
+#include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -27,6 +28,12 @@ typedef struct xe_platform {
 
     float mouse_x;
     float mouse_y;
+    float prev_mouse_x;
+    float prev_mouse_y;
+    bool mouse_left;
+    bool mouse_right;
+    bool prev_mouse_left;
+    bool prev_mouse_right;
 
     /* Internal state */
     char window_title[1024];

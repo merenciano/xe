@@ -2826,7 +2826,7 @@ void _spPhysicsConstraintResetTimeline_apply(spTimeline *timeline, spSkeleton *s
 
 	float *frames = SUPER(self)->frames->items;
 	if (lastTime > time) {// Apply after lastTime for looped animations.
-		_spPhysicsConstraintResetTimeline_apply(SUPER(self), skeleton, lastTime, INT_MAX, NULL, 0, alpha, blend, direction);
+		_spPhysicsConstraintResetTimeline_apply(SUPER(self), skeleton, lastTime, (float)INT_MAX, NULL, 0, alpha, blend, direction);
 		lastTime = -1;
 	} else if (lastTime >= frames[SUPER(self)->frameCount - 1])// Last time is after last frame.
 		return;

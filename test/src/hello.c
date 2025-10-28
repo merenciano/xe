@@ -26,9 +26,9 @@ static const xe_gfx_vtx QUAD_VERTICES[] = {
 static const xe_gfx_idx QUAD_INDICES[] = { 0, 1, 2, 0, 2, 3 };
 
 static xe_gfx_material QUAD_MATERIAL = {
-    .model = LU_MAT4_IDENTITY,
+    .model = {1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1},
     .color = LU_VEC(1,1,1,1),
-    .darkcolor = LU_VEC4_ZERO,
+    .darkcolor = LU_VEC(0,0,0,0),
     .pma = 0.0f
 };
 
@@ -37,10 +37,10 @@ static xe_platform g_platform;
 int main()
 {
     if (!xe_platform_init(&g_platform, &(xe_platform_config) {
-            .title = "hello demo",
-            .display_w = 1024,
-            .display_h = 720,
-            .vsync = true,
+            .title = "xe hello demo",
+            .display_w = 1920,
+            .display_h = 1080,
+            .vsync = false,
             .log_filename = "" })) {
 
         printf("Can not init platform.\n");
