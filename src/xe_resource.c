@@ -36,7 +36,7 @@ xe_image_tex(xe_image image)
             return img->tex;
         case XE_RS_STAGED:
             xe_gfx_tex_load(img->tex, img->data);
-            stbi_image_free(img->data);
+            stbi_image_free((void*)img->data);
             ((struct xe_res_image*)img)->data = NULL;
             return img->tex;
 
