@@ -3,10 +3,12 @@
 #include "xe_scene.h"
 
 #include "xe_spine.h"
+#include "xe_nuklear.h"
 
 #include <llulu/lu_time.h>
 #include <llulu/lu_math.h>
 #include <spine/spine.h>
+#include <nuklear.h>
 
 #include <stdbool.h>
 #include <stdio.h>
@@ -76,27 +78,21 @@ int main(int argc, char **argv)
 {
     if (!xe_platform_init(&platform, &(xe_platform_config){
             .title = "XE TEST",
-            .display_w = 1200,
-            .display_h = 900,
+            .display_w = 1920,
+            .display_h = 1080,
             .vsync = true,
             .log_filename = "" })) {
         return 1;
     }
 
-    if (!xe_gfx_init(&((xe_gfx_config) {
+    if (!xe_gfx_init(&(xe_gfx_config) {
         .gl_loader = platform.gl_loader,
         .vert_shader_path = "./assets/vert.glsl",
         .frag_shader_path = "./assets/frag.glsl",
-        .default_ops = {
-            .clip = {0, 0, 0, 0},
-            .blend_src = XE_BLEND_ONE,
-            .blend_dst = XE_BLEND_ONE_MINUS_SRC_ALPHA,
-            .depth = XE_DEPTH_DISABLED,
-            .cull = XE_CULL_NONE
-        },
+        .default_ops = xe_gfx_rops_default(0),
         .background_color = { .r = 1.0f, .g = 0.0f, .b = 0.0f, .a = 1.0f },
         .viewport = { .x = 0, .y = 0, platform.viewport_w, platform.viewport_h }
-    }))) {
+    })) {
         printf("Can not init graphics module.\n");
         return 1;
     }
@@ -150,27 +146,64 @@ int main(int argc, char **argv)
     elapsed = lu_time_elapsed(timer);
     platform.timers_data.scene_load = elapsed;
 
-    platform.timers_data.init_time = lu_time_elapsed(platform.begin_timestamp);
-    deltasec = xe_platform_update();
+    xe_nk_init(&platform);
 
+    platform.timers_data.init_time = lu_time_elapsed(platform.begin_timestamp);
+    deltasec = 0.016f;
+
+    struct nk_colorf bg = {0.3f, 0.0f, 0.0f, 1.0f};
     while(!platform.close) {
+        struct nk_context *ctx = xe_nk_new_frame();
+        /* Systems */
+        if (nk_begin(ctx, "Demo", nk_rect(50, 50, 230, 250),
+            NK_WINDOW_BORDER|NK_WINDOW_MOVABLE|NK_WINDOW_SCALABLE|
+            NK_WINDOW_MINIMIZABLE|NK_WINDOW_TITLE))
+        {
+            enum {EASY, HARD};
+            static int op = EASY;
+            static int property = 20;
+            nk_layout_row_static(ctx, 30, 80, 1);
+            if (nk_button_label(ctx, "button"))
+                fprintf(stdout, "button pressed\n");
+
+            nk_layout_row_dynamic(ctx, 30, 2);
+            if (nk_option_label(ctx, "easy", op == EASY)) op = EASY;
+            if (nk_option_label(ctx, "hard", op == HARD)) op = HARD;
+
+            nk_layout_row_dynamic(ctx, 25, 1);
+            nk_property_int(ctx, "Compression:", 0, &property, 100, 10, 1);
+
+            nk_layout_row_dynamic(ctx, 20, 1);
+            nk_label(ctx, "background:", NK_TEXT_LEFT);
+            nk_layout_row_dynamic(ctx, 25, 1);
+            if (nk_combo_begin_color(ctx, nk_rgb_cf(bg), nk_vec2(nk_widget_width(ctx),400))) {
+                nk_layout_row_dynamic(ctx, 120, 1);
+                bg = nk_color_picker(ctx, bg, NK_RGBA);
+                nk_layout_row_dynamic(ctx, 25, 1);
+                bg.r = nk_propertyf(ctx, "#R:", 0, bg.r, 1.0f, 0.01f,0.005f);
+                bg.g = nk_propertyf(ctx, "#G:", 0, bg.g, 1.0f, 0.01f,0.005f);
+                bg.b = nk_propertyf(ctx, "#B:", 0, bg.b, 1.0f, 0.01f,0.005f);
+                bg.a = nk_propertyf(ctx, "#A:", 0, bg.a, 1.0f, 0.01f,0.005f);
+                nk_combo_end(ctx);
+            }
+        }
+        nk_end(ctx);
+
         xe_gfx_pass_begin(
             (lu_rect){0, 0, platform.viewport_w, platform.viewport_h},
-            (lu_color){ 0.1f, 0.07f, 0.1f, 1.0f},
-            true, true, false,
+            (lu_color){ bg.r, bg.g, bg.b, bg.a},
+            true, true, true,
             (xe_gfx_rops){ 
                 .clip = {0,0,0,0},
-                .blend_src = XE_BLEND_DISABLED,
-                .blend_dst = XE_BLEND_DISABLED,
-                .depth = XE_DEPTH_DISABLED,
-                .cull = XE_CULL_NONE
+                .blend_src = XE_BLEND_UNSET,
+                .blend_dst = XE_BLEND_UNSET,
+                .depth = XE_DEPTH_UNSET,
+                .cull = XE_CULL_UNSET
             }
         );
 
-        /* Systems */
         xe_spine_animation_pass(deltasec);
         xe_scene_update_world();
-        xe_gfx_sync();
         xe_scene_drawable_draw_pass();
         xe_gfx_rops_set((xe_gfx_rops) {
                 .clip = {0,0,0,0},
@@ -180,10 +213,12 @@ int main(int argc, char **argv)
                 .cull = XE_CULL_UNSET });
         xe_spine_draw_pass();
 
+        xe_nk_render();
         xe_gfx_render();
         deltasec = xe_platform_update();
     }
 
+    xe_nk_shutdown();
     xe_platform_shutdown();
 
     return 0;

@@ -131,9 +131,16 @@ xe_platform_update(void)
     glfwGetWindowSize(win, &pl->window_w, &pl->window_h);
     double x, y;
     glfwGetCursorPos(win, &x, &y);
+    pl->prev_mouse_x = pl->mouse_x;
+    pl->prev_mouse_y = pl->mouse_y;
     pl->mouse_x = (float)x;
     pl->mouse_y = (float)y;
     pl->close = glfwWindowShouldClose(win);
+    pl->prev_mouse_left = pl->mouse_left;
+    pl->prev_mouse_right = pl->mouse_right;
+    pl->mouse_left = glfwGetMouseButton(win, GLFW_MOUSE_BUTTON_LEFT);
+    pl->mouse_right = glfwGetMouseButton(win, GLFW_MOUSE_BUTTON_RIGHT);
+
     return lu_time_sec(pl->delta_ns);
 }
 

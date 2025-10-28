@@ -10,7 +10,10 @@
 #include <spine/spine.h>
 #include <spine/extension.h>
 
-enum {XE_SP_FILENAME_LEN = 256};
+enum {
+    XE_SP_FILENAME_LEN = 256,
+    XE_MAX_SPINES = 32
+};
 
 struct xe_res_spine {
     struct xe_resource res;
@@ -31,7 +34,6 @@ struct xe_atlas_entry {
 
 struct xe_atlas_entry *g_atlases = NULL;
 
-enum { XE_MAX_SPINES = 32 };
 static struct xe_res_spine g_spines[XE_MAX_SPINES];
 
 void

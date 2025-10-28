@@ -151,7 +151,7 @@ void xe_gfx_sync(void);
 void xe_gfx_shutdown(void);
 
 xe_gfx_tex xe_gfx_tex_alloc(xe_gfx_texfmt format);
-void xe_gfx_tex_load(xe_gfx_tex tex, void *data);
+void xe_gfx_tex_load(xe_gfx_tex tex, const void *data);
 
 /* Adds  */
 void xe_gfx_pass_begin(lu_rect viewport, lu_color background,
@@ -163,4 +163,3 @@ void xe_gfx_push(const void *vert, size_t vert_size, const void *indices, size_t
 void xe_gfx_render(void);
 
 #endif /* XE_GFX_H */
-

@@ -1,4 +1,5 @@
 #include "xe_gfx.h"
+#include "xe_gfx_internal.h"
 #include "xe_gfx_helpers.h"
 #include "xe_platform.h"
 
@@ -30,12 +31,6 @@ enum {
     XE_MAX_ERROR_MSG_LEN = 2048,
     XE_MAX_SYNC_TIMEOUT_NANOSEC = 50000000
 };
-
-typedef struct xe_mesh {
-    int base_vtx;
-    int first_idx;
-    int idx_count;
-} xe_mesh;
 
 typedef struct xe_shader_shape_data {
     lu_mat4 model;
@@ -81,7 +76,7 @@ enum {
 
 typedef struct xe_vbuf {
     void *data;
-    size_t head;
+    ptrdiff_t head;
     uint32_t id;
 } xe_vbuf;
 
@@ -100,7 +95,6 @@ typedef struct xe_gl_renderer {
     struct xe_texpool tex;
     int phase; /* for the triphassic fence */
     GLsync fence[3];
-    lu_mat4 view_proj; // TODO: move to scene
     xe_pipeline pipeline;
 
     xe_vbuf vertices;
@@ -114,6 +108,7 @@ typedef struct xe_gl_renderer {
     lu_color curr_bgcolor;
 } xe_gl_renderer;
 
+lu_mat4 view_projection;
 
 static xe_gl_renderer g_r; // Depends on zero init
 
@@ -213,12 +208,6 @@ xe_shader_load_path(const char *vert_path, const char *frag_path)
 static void
 xe_shader_gpu_setup(void)
 {
-    float view[16];
-    float proj[16];
-    lu_mat4_look_at(view, (float[]){0.0f, 0.0f, 2.0f}, (float[]){0.0f, 0.0f, 0.0f}, (float[]){0.0f, 1.0f, 0.0f});
-    lu_mat4_perspective_fov(proj, lu_radians(70.0f), 1920.0f, 1080.0f, 0.1f, 300.0f);
-    lu_mat4_multiply(g_r.view_proj.m, proj, view);
-
     g_r.pipeline.shader.program_id = glCreateProgram();
     xe_shader_load_path(g_r.pipeline.shader.vert_path, g_r.pipeline.shader.frag_path);
 }
@@ -251,7 +240,7 @@ xe_gfx_tex_alloc(xe_gfx_texfmt fmt)
 }
 
 void
-xe_gfx_tex_load(xe_gfx_tex tex, void *data)
+xe_gfx_tex_load(xe_gfx_tex tex, const void *data)
 {
     lu_err_assert(tex.idx < XE_MAX_TEXTURE_ARRAYS && tex.layer < XE_MAX_TEXTURE_LAYERS);
     const xe_gfx_texfmt *fmt = &g_r.tex.fmt[tex.idx];
@@ -283,46 +272,27 @@ xe_gfx_init(xe_gfx_config *cfg)
     g_r.pipeline.shader.vert_path = cfg->vert_shader_path;
     g_r.pipeline.shader.frag_path = cfg->frag_shader_path;
 
-    /* Depth test */
-    if (cfg->default_ops.depth == XE_DEPTH_DISABLED) {
-        glDisable(GL_DEPTH_TEST);
-    } else if (cfg->default_ops.depth != XE_DEPTH_UNSET) {
-        glEnable(GL_DEPTH_TEST);
-        glDepthFunc(xe__lut_gl_depth_fn[cfg->default_ops.depth]);
-    }
-
-    /* Blending */
-    if (cfg->default_ops.blend_src == XE_BLEND_DISABLED ||
-        cfg->default_ops.blend_dst == XE_BLEND_DISABLED) {
-        glDisable(GL_BLEND);
-    } else if (cfg->default_ops.blend_src && cfg->default_ops.blend_dst) {
-        glEnable(GL_BLEND);
-        glBlendFunc(xe__lut_gl_blend[cfg->default_ops.blend_src],
-                    xe__lut_gl_blend[cfg->default_ops.blend_dst]);
-    }
-
-    /* Face culling */
-    if (cfg->default_ops.cull == XE_CULL_NONE) {
-        glDisable(GL_CULL_FACE);
-    } else if (cfg->default_ops.cull != XE_CULL_UNSET) {
-        glEnable(GL_CULL_FACE);
-        glCullFace(xe__lut_gl_cull[cfg->default_ops.cull]);
-    }
-    
-    /* Clipping */
-    if ((cfg->default_ops.clip.x | cfg->default_ops.clip.y |
-         cfg->default_ops.clip.w | cfg->default_ops.clip.h) == 0) {
-        glDisable(GL_SCISSOR_TEST);
-    } else {
-        glEnable(GL_SCISSOR_TEST);
-        glScissor(cfg->default_ops.clip.x, cfg->default_ops.clip.y, cfg->default_ops.clip.w, cfg->default_ops.clip.h); 
-    }
-
-    g_r.curr_ops = cfg->default_ops;
-    glClearColor(cfg->background_color.r, cfg->background_color.g, cfg->background_color.b, cfg->background_color.a);
     glViewport(cfg->viewport.x, cfg->viewport.y, cfg->viewport.w, cfg->viewport.h);
-    g_r.curr_bgcolor = cfg->background_color;
     g_r.curr_vp = cfg->viewport;
+    glClearColor(0.0f, 0.0f, 0.4f, 1.0f);
+    g_r.curr_bgcolor = (lu_color){0.0f, 0.0f, 0.4f, 1.0f};
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+    glBlendEquation(GL_FUNC_ADD);
+    glDisable(GL_CULL_FACE);
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_SCISSOR_TEST);
+    glDisable(GL_DEPTH_WRITEMASK);
+    glDisable(GL_STENCIL_TEST);
+    glDisable(GL_STENCIL_WRITEMASK);
+    g_r.curr_ops = (xe_gfx_rops){
+        .clip = {0,0,0,0},
+        .blend_src = XE_BLEND_ONE,
+        .blend_dst = XE_BLEND_ONE_MINUS_SRC_ALPHA,
+        .cull = XE_CULL_NONE,
+        .depth = XE_DEPTH_DISABLED
+    };
+
 
     /* Persistent mapped buffers for vertices, indices uniforms and indirect draw commands. */
     GLuint buf_id[4];
@@ -367,6 +337,12 @@ xe_gfx_init(xe_gfx_config *cfg)
     glCreateTextures(GL_TEXTURE_2D_ARRAY, XE_MAX_TEXTURE_ARRAYS, g_r.tex.id);
     glBindTextures(0, XE_MAX_TEXTURE_ARRAYS, g_r.tex.id);
 
+    float view[16];
+    float proj[16];
+    lu_mat4_look_at(view, (float[]){0.0f, 0.0f, 2.0f}, (float[]){0.0f, 0.0f, 0.0f}, (float[]){0.0f, 1.0f, 0.0f});
+    lu_mat4_perspective_fov(proj, lu_radians(70.0f), cfg->viewport.w, cfg->viewport.h, 0.1f, 300.0f);
+    lu_mat4_multiply(view_projection.m, proj, view);
+
     return true;
 }
 
@@ -380,10 +356,14 @@ xe_gfx_pass_begin(lu_rect viewport, lu_color background,
     g_r.rpass.clear_color = clear_color;
     g_r.rpass.clear_depth = clear_depth;
     g_r.rpass.clear_stencil = clear_stencil;
-    g_r.rpass.head = 0;
+    g_r.rpass.head = 1;
     g_r.rpass.batches[0].start_offset = g_r.drawlist.head;
     g_r.rpass.batches[0].batch_size = 0;
     g_r.rpass.batches[0].rops = ops;
+    g_r.rpass.batches[1].start_offset = g_r.drawlist.head;
+    g_r.rpass.batches[1].batch_size = 0;
+    g_r.rpass.batches[1].rops = ops;
+    xe_gfx_sync();
 }
 
 void
@@ -415,35 +395,54 @@ xe_gfx_rops_set(xe_gfx_rops ops)
     }
 }
 
-static xe_mesh
-xe_mesh_add(const void *vert, size_t vert_size, const void *indices, size_t indices_size)
+void
+xe__vtxbuf_remaining(void **out_vtx, size_t *out_vtx_rem, size_t *out_first_vtx,
+                     void **out_idx, size_t *out_idx_rem, size_t *out_first_idx)
 {
 #ifdef XE_DEBUG
     xe_gfx_sync();
 #endif
-    size_t vert_remaining = ((g_r.phase + 1) * XE_MAX_VERTICES * sizeof(xe_gfx_vtx)) - g_r.vertices.head;
-    size_t indices_remaining = ((g_r.phase + 1) * XE_MAX_INDICES * sizeof(xe_gfx_idx)) - g_r.indices.head;
-    bool enough_space = (vert_size <= vert_remaining) && (indices_size <= indices_remaining);
+    *out_vtx_rem = ((g_r.phase + 1) * XE_MAX_VERTICES * sizeof(xe_gfx_vtx)) - g_r.vertices.head;
+    *out_idx_rem = ((g_r.phase + 1) * XE_MAX_INDICES * sizeof(xe_gfx_idx)) - g_r.indices.head;
+    *out_vtx = (char*)g_r.vertices.data + g_r.vertices.head;
+    *out_idx = (char*)g_r.indices.data + g_r.indices.head;
+    *out_first_vtx = g_r.vertices.head / sizeof(xe_gfx_vtx);
+    *out_first_idx = g_r.indices.head / sizeof(xe_gfx_idx);
+}
+
+void
+xe__vtxbuf_push_nocheck(size_t vtx_bytes, size_t idx_bytes)
+{
+    g_r.vertices.head += vtx_bytes;
+    g_r.indices.head += idx_bytes;
+}
+
+xe_mesh
+xe_mesh_add(const void *vert, size_t vert_size, const void *indices, size_t indices_size)
+{
+    void *vtx_head, *idx_head;
+    size_t vtx_rem, idx_rem, base_vtx, base_idx;
+    xe__vtxbuf_remaining(&vtx_head, &vtx_rem, &base_vtx, &idx_head, &idx_rem, &base_idx);
+    lu_err_assert(vtx_head && idx_head);
+    bool enough_space = (vert_size <= vtx_rem) && (indices_size <= idx_rem);
     lu_err_assert(enough_space);
     if (!enough_space) {
         return (xe_mesh){ .base_vtx = 0, .first_idx = 0, .idx_count = 0 };
     }
 
     xe_mesh added_mesh = { 
-        .base_vtx = (int)(g_r.vertices.head / sizeof(xe_gfx_vtx)),
-        .first_idx = (int)(g_r.indices.head / sizeof(xe_gfx_idx)),
+        .base_vtx = base_vtx,
+        .first_idx = base_idx,
         .idx_count = (int)(indices_size / sizeof(xe_gfx_idx))
     };
 
-    memcpy((char*)g_r.vertices.data + g_r.vertices.head, vert, vert_size);
-    g_r.vertices.head += vert_size;
-    memcpy((char*)g_r.indices.data + g_r.indices.head, indices, indices_size);
-    g_r.indices.head += indices_size;
-    
+    memcpy(vtx_head, vert, vert_size);
+    memcpy(idx_head, indices, indices_size);
+    xe__vtxbuf_push_nocheck(vert_size, indices_size);
     return added_mesh;
 }
 
-static int
+int
 xe_material_add(const xe_gfx_material *mat)
 {
 #ifdef XE_DEBUG
@@ -457,10 +456,12 @@ xe_material_add(const xe_gfx_material *mat)
         return -1;
     }
 
-    int idx = ((ptrdiff_t)g_r.uniforms.head - g_r.phase * sizeof(xe_shader_data) - offsetof(xe_shader_data, data))
-                / sizeof(xe_shader_shape_data);
+    //int idx = ((ptrdiff_t)g_r.uniforms.head - g_r.phase * sizeof(xe_shader_data) - offsetof(xe_shader_data, data))
+    //            / sizeof(xe_shader_shape_data);
 
-    xe_shader_shape_data *uniform = &((xe_shader_data*)g_r.uniforms.data + g_r.phase)->data[idx];
+    //int index = g_r.uniforms.head - ((((char*)g_r.uniforms.data) + g_r.phase * sizeof(xe_shader_data)) + offsetof(xe_shader_data, data));
+
+    xe_shader_shape_data *uniform = (void*)((char*)g_r.uniforms.data + g_r.uniforms.head);
     uniform->model = mat->model;
     uniform->color = mat->color;
     uniform->darkcolor = mat->darkcolor;
@@ -468,12 +469,13 @@ xe_material_add(const xe_gfx_material *mat)
     uniform->albedo_layer = (float)mat->tex.layer;
     uniform->pma = mat->pma;
 
+    size_t index = ((char*)(void*)uniform - ((char*)g_r.uniforms.data + g_r.phase * sizeof(xe_shader_data) + offsetof(xe_shader_data, data))) / sizeof(xe_shader_shape_data);
     g_r.uniforms.head += sizeof(xe_shader_shape_data);
     
-    return idx;
+    return (int)index;
 }
 
-static bool
+bool
 xe_drawcmd_add(xe_mesh mesh, int draw_id)
 {
     size_t remaining = (g_r.phase + 1) * XE_MAX_DRAW_INDIRECT * sizeof(xe_drawcmd) - g_r.drawlist.head;
@@ -482,7 +484,7 @@ xe_drawcmd_add(xe_mesh mesh, int draw_id)
     if (!enough_space) {
         return false;
     }
-    
+
     *((xe_drawcmd*)((char*)g_r.drawlist.data + g_r.drawlist.head)) = (xe_drawcmd){
         .element_count = mesh.idx_count,
         .instance_count = 1,
@@ -522,6 +524,57 @@ xe_gfx_render(void)
         g_r.curr_vp = g_r.rpass.viewport;
     }
 
+    if (memcmp(&g_r.rpass.batches[0].rops.clip, &g_r.curr_ops.clip, sizeof(g_r.rpass.batches[0].rops.clip)) != 0) {
+        if ((g_r.rpass.batches[0].rops.clip.x | g_r.rpass.batches[0].rops.clip.y |
+            g_r.rpass.batches[0].rops.clip.w | g_r.rpass.batches[0].rops.clip.h) == 0) {
+            glDisable(GL_SCISSOR_TEST);
+        } else {
+            glEnable(GL_SCISSOR_TEST);
+            glScissor(g_r.rpass.batches[0].rops.clip.x, g_r.rpass.batches[0].rops.clip.y, g_r.rpass.batches[0].rops.clip.w, g_r.rpass.batches[0].rops.clip.h);
+        }
+
+        g_r.curr_ops.clip = g_r.rpass.batches[0].rops.clip;
+    }
+
+    if (!((g_r.rpass.batches[0].rops.blend_src == XE_BLEND_UNSET || g_r.rpass.batches[0].rops.blend_src == g_r.curr_ops.blend_src) &&
+            (g_r.rpass.batches[0].rops.blend_dst == XE_BLEND_UNSET || g_r.rpass.batches[0].rops.blend_dst == g_r.curr_ops.blend_dst))) {
+        if (g_r.rpass.batches[0].rops.blend_src == XE_BLEND_DISABLED || g_r.rpass.batches[0].rops.blend_dst == XE_BLEND_DISABLED) {
+            glDisable(GL_BLEND);
+            g_r.rpass.batches[0].rops.blend_src = XE_BLEND_DISABLED;
+            g_r.rpass.batches[0].rops.blend_dst = XE_BLEND_DISABLED;
+        } else {
+            glEnable(GL_BLEND);
+            glBlendFunc(xe__lut_gl_blend[g_r.rpass.batches[0].rops.blend_src],
+                        xe__lut_gl_blend[g_r.rpass.batches[0].rops.blend_dst]);
+        }
+
+        g_r.curr_ops.blend_src = g_r.rpass.batches[0].rops.blend_src;
+        g_r.curr_ops.blend_dst = g_r.rpass.batches[0].rops.blend_dst;
+    }
+
+    if (!(g_r.rpass.batches[0].rops.cull == XE_CULL_UNSET || g_r.rpass.batches[0].rops.cull == g_r.curr_ops.cull)) {
+        if (g_r.rpass.batches[0].rops.cull == XE_CULL_NONE) {
+            glDisable(GL_CULL_FACE);
+        } else {
+            glEnable(GL_CULL_FACE);
+            glCullFace(xe__lut_gl_cull[g_r.rpass.batches[0].rops.cull]);
+        }
+
+        g_r.curr_ops.cull = g_r.rpass.batches[0].rops.cull;
+    }
+
+    if (!(g_r.rpass.batches[0].rops.depth == XE_DEPTH_UNSET || g_r.rpass.batches[0].rops.depth == g_r.curr_ops.depth)) {
+        if (g_r.rpass.batches[0].rops.depth == XE_DEPTH_DISABLED) {
+            glDisable(GL_DEPTH_TEST);
+        } else {
+            glEnable(GL_DEPTH_TEST);
+            glDepthFunc(xe__lut_gl_depth_fn[g_r.rpass.batches[0].rops.depth]);
+        }
+
+        g_r.curr_ops.depth = g_r.rpass.batches[0].rops.depth;
+    }
+
+
     if (g_r.rpass.bg_color.r != g_r.curr_bgcolor.r ||
             g_r.rpass.bg_color.g != g_r.curr_bgcolor.g ||
             g_r.rpass.bg_color.b != g_r.curr_bgcolor.b ||
@@ -535,7 +588,7 @@ xe_gfx_render(void)
             (g_r.rpass.clear_stencil * GL_STENCIL_BUFFER_BIT));
 
     xe_gfx_sync();
-    memcpy((char*)g_r.uniforms.data + g_r.phase * sizeof(xe_shader_data), g_r.view_proj.m, sizeof(g_r.view_proj));
+    memcpy((char*)g_r.uniforms.data + g_r.phase * sizeof(xe_shader_data), view_projection.m, sizeof(view_projection));
     glBindBufferRange(GL_UNIFORM_BUFFER, 0, g_r.uniforms.id, g_r.phase * sizeof(xe_shader_data), sizeof(xe_shader_data));
 
     xe_gfx_rops prev_ops = g_r.curr_ops;
@@ -550,7 +603,7 @@ xe_gfx_render(void)
                 glDisable(GL_SCISSOR_TEST);
             } else {
                 glEnable(GL_SCISSOR_TEST);
-                glScissor(draw->rops.clip.x, draw->rops.clip.y, draw->rops.clip.w, draw->rops.clip.h);
+                glScissor((GLint)draw->rops.clip.x, (GLint)draw->rops.clip.y, (GLint)draw->rops.clip.w, (GLint)draw->rops.clip.h);
             }
 
             prev_ops.clip = draw->rops.clip;
