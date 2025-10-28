@@ -73,7 +73,7 @@ static char *string_copy(const char *str) {
 	if (str == NULL) return NULL;
 	int len = strlen(str);
 	char *tmp = (char *) malloc(len + 1);
-	strncpy(tmp, str, len);
+	memcpy(tmp, str, len);
 	tmp[len] = '\0';
 	return tmp;
 }

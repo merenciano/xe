@@ -26,7 +26,7 @@ static const xe_gfx_vtx QUAD_VERTICES[] = {
 static const xe_gfx_idx QUAD_INDICES[] = { 0, 1, 2, 0, 2, 3 };
 
 static xe_gfx_material QUAD_MATERIAL = {
-    .model = LU_MAT4_IDENTITY,
+    .model = {1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1},
     .color = LU_VEC(1,1,1,1),
     .darkcolor = LU_VEC(0,0,0,0),
     .pma = 0.0f
