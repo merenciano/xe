@@ -28,6 +28,7 @@ typedef struct xe_scene_node_desc {
     float pos_y;
     float pos_z;
     float scale;
+    int child_count;
 } xe_scene_node_desc;
 
 xe_scene_node xe_scene_create_node(xe_scene_node_desc *desc);

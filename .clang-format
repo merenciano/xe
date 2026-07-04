@@ -1,0 +1,44 @@
+BasedOnStyle: Mozilla
+AlignAfterOpenBracket: Align
+AlignEscapedNewlines: Left
+AlignOperands: DontAlign
+AllowShortBlocksOnASingleLine: Empty
+AllowShortLoopsOnASingleLine: true
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortCaseLabelsOnASingleLine: true
+AlwaysBreakAfterReturnType: TopLevelDefinitions
+BinPackArguments: true
+BinPackParameters: false
+BreakBeforeBraces: Linux
+BreakBeforeBinaryOperators: None
+BreakBeforeTernaryOperators: false
+BreakStringLiterals: false
+ContinuationIndentWidth: 2
+FixNamespaceComments: true
+IncludeBlocks: Preserve
+IncludeCategories:
+  - Regex:           '.*'
+    Priority:        0
+IncludeIsMainRegex: "(_test)?$"
+IndentCaseLabels: false
+InsertNewlineAtEOF: true
+MaxEmptyLinesToKeep: 1
+PenaltyBreakAssignment: 30
+PenaltyBreakBeforeFirstCallParameter: 100
+#PenaltyBreakComment: 10
+PenaltyBreakOpenParenthesis: 100
+#PenaltyBreakString: 1
+#PenaltyExcessCharacter: 1000
+PenaltyIndentedWhitespace: 10
+#PenaltyReturnTypeOnItsOwnLine: 10
+PointerAlignment: Right
+PPIndentWidth: 1
+ReflowComments: true
+SeparateDefinitionBlocks: Leave
+#SpacesInParens: Never
+SpacesInSquareBrackets: false
+IndentWidth: 4
+TabWidth: 4
+ColumnLimit: 99
+UseTab: AlignWithSpaces
+WhitespaceSensitiveMacros: [ERR_IF]

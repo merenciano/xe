@@ -98,7 +98,7 @@ get_global_tr(xe_scene_node n)
 xe_scene_node xe_scene_create_node(xe_scene_node_desc *desc)
 {
     int index = g_node_count++;
-    g_nodes[index].child_count = 0;
+    g_nodes[index].child_count = desc->child_count;
     g_nodes[index].transform_index = index;
     g_nodes[index].res.state = 0;
     g_nodes[index].res.version++;

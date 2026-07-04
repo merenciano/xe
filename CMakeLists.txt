@@ -7,6 +7,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS true)
 
 project(Xe VERSION 0.0.1)
 
+include(CTest)
+
 add_library(xe OBJECT)
 set_target_properties(xe PROPERTIES ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/lib)
 

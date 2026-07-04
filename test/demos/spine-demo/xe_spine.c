@@ -1,6 +1,6 @@
 #include "xe_spine.h"
 #include "xe_gfx.h"
-#include "../spine-demo/xe_scene_internal.h"
+#include "../src/xe_scene_internal.h"
 
 #include <xe_platform.h>
 
@@ -366,6 +366,7 @@ xe_spine_create(const char *atlas, const char *skel_json, float scale, const cha
         .pos_y = 0.0f,
         .pos_z = -20.0f,
         .scale = 1.0f,
+        .child_count = 0
     };
 
     sp->node = xe_scene_create_node(&desc);

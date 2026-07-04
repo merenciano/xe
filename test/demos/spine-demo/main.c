@@ -116,7 +116,8 @@ int main(int argc, char **argv)
             .pos_x = 0.0f,
             .pos_y = 0.0f,
             .pos_z = -20.0f,
-            .scale = 1.8f
+            .scale = 1.8f,
+            .child_count = 0
         };
         nodes[i] = xe_scene_create_drawable(&desc, tex_test[i]);
     }
