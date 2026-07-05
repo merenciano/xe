@@ -3,7 +3,7 @@ layout(location=0) in vec2 a_pos;
 layout(location=1) in vec2 a_uv;
 layout(location=2) in vec4 a_color;
 
-struct ShapeData {
+struct ShapeData {  
     mat4 model;
     vec4 color;
     vec4 darkcolor;
@@ -11,11 +11,14 @@ struct ShapeData {
     float albedo_layer;
     float pma;
     int dark_is_clip;
+    vec4 padding1;
+    mat4 padding2;
+    mat4 padding3;
 };
 
-layout(std140, binding=0) uniform u_data {
+layout(std430, binding=0) readonly buffer u_data {
     mat4 vp;
-    ShapeData shape[256];
+    ShapeData shape[];
 };
 
 out Vertex {

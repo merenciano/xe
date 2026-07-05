@@ -3,6 +3,7 @@
 .idea
 .cache
 .clangd
+compile_commands.json
 bin/*
 bin/assets/**.png
 bin/assets/**.atlas

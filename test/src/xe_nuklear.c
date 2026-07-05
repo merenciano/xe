@@ -5,8 +5,8 @@
 #include <xe_scene.h>
 #include <xe_platform.h>
 #include <../src/xe_scene_internal.h>
-#include <xe_gfx.h>
-#include <../src/xe_gfx_internal.h>
+#include <xe_render.h>
+#include <../src/xe_render_internal.h>
 #include <llulu/lu_defs.h>
 #include <llulu/lu_error.h>
 #include <llulu/lu_math.h>
@@ -124,17 +124,17 @@ xe_nk_render(void)
 {
     static char cmdbuf_memory[XE_NK_CMDBUF_SIZE];
     static const struct nk_draw_vertex_layout_element vertex_layout[] = {
-        {NK_VERTEX_POSITION, NK_FORMAT_FLOAT, NK_OFFSETOF(xe_gfx_vtx, x)},
-        {NK_VERTEX_TEXCOORD, NK_FORMAT_FLOAT, NK_OFFSETOF(xe_gfx_vtx, u)},
-        {NK_VERTEX_COLOR, NK_FORMAT_R8G8B8A8, NK_OFFSETOF(xe_gfx_vtx, color)},
+        {NK_VERTEX_POSITION, NK_FORMAT_FLOAT, NK_OFFSETOF(xe_vtx, x)},
+        {NK_VERTEX_TEXCOORD, NK_FORMAT_FLOAT, NK_OFFSETOF(xe_vtx, u)},
+        {NK_VERTEX_COLOR, NK_FORMAT_R8G8B8A8, NK_OFFSETOF(xe_vtx, color)},
         {NK_VERTEX_LAYOUT_END}
     };
 
     struct nk_convert_config config = {0};
     memset(&config, 0, sizeof(config));
     config.vertex_layout = vertex_layout;
-    config.vertex_size = sizeof(xe_gfx_vtx);
-    config.vertex_alignment = NK_ALIGNOF(xe_gfx_vtx);
+    config.vertex_size = sizeof(xe_vtx);
+    config.vertex_alignment = NK_ALIGNOF(xe_vtx);
     config.tex_null = g_nuk.tex_null;
     config.circle_segment_count = 22;
     config.curve_segment_count = 22;
@@ -158,7 +158,7 @@ xe_nk_render(void)
     xe_mesh mesh = (xe_mesh){
         .base_vtx = (int)first_vtx,
         .first_idx = (int)first_idx,
-        .idx_count = isize / sizeof(xe_gfx_idx)
+        .idx_count = isize / sizeof(xe_vtx_idx)
     };
     xe__vtxbuf_push_nocheck(vsize, isize);
 
@@ -170,7 +170,7 @@ xe_nk_render(void)
         if (!cmd->elem_count) {
             continue;
         }
-        xe_gfx_rops_set((xe_gfx_rops){
+        xe_render_draw_state_set((xe_draw_state){
             .clip = {
                 .x = cmd->clip_rect.x > 0.0f ? (uint16_t)cmd->clip_rect.x : 0, /* TODO: use int32 clip values for config */
                 .y = cmd->clip_rect.y > 0.0f ? g_nuk.plat->window_h - (uint16_t)(cmd->clip_rect.y + cmd->clip_rect.h) : 0,
@@ -188,12 +188,13 @@ xe_nk_render(void)
             .idx_count = (int)cmd->elem_count
         };
         xe_image img = { .id = cmd->texture.id };
-        xe_gfx_material mat = (xe_gfx_material) {
-            .model = ui_vp,
-            .color = LU_VEC(1.0f, 1.0f, 1.0f, 1.0f),
-            .darkcolor = LU_VEC(0.0f, 0.0f, 0.0f, 1.0f),
-            .tex = xe_image_ptr(img)->tex,
-            .pma = 0,
+        xe_material mat = (xe_material) {
+            .data.generic.model = ui_vp,
+            .data.generic.color = LU_VEC(1.0f, 1.0f, 1.0f, 1.0f),
+            .data.generic.darkcolor = LU_VEC(0.0f, 0.0f, 0.0f, 1.0f),
+            .data.generic.albedo_idx = xe_asset_image_data(img)->tex.idx,
+            .data.generic.albedo_layer = (float)xe_asset_image_data(img)->tex.layer,
+            .data.generic.pma = 0,
         };
         int draw_id = xe_material_add(&mat);
         xe_drawcmd_add(submesh, draw_id);

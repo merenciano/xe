@@ -8,11 +8,14 @@ struct ShapeData {
     float albedo_layer;
     float pma;
     int dark_is_clip;
+    vec4 padding1;
+    mat4 padding2;
+    mat4 padding3;
 };
 
-layout(std140, binding=0) uniform u_data {
+layout(std430, binding=0) readonly buffer u_data {
     mat4 vp;
-    ShapeData shape[256];
+    ShapeData shape[];
 };
 
 layout(binding = 0) uniform sampler2DArray u_textures[16];

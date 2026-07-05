@@ -1,5 +1,5 @@
 #include "xe_platform.h"
-#include "xe_gfx.h"
+#include "xe_render.h"
 
 #include <llulu/lu_time.h>
 #include <llulu/lu_log.h>

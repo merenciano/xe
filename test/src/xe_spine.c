@@ -1,5 +1,5 @@
 #include "xe_spine.h"
-#include "xe_gfx.h"
+#include "xe_render.h"
 #include "../src/xe_scene_internal.h"
 
 #include <xe_platform.h>
@@ -16,12 +16,14 @@ enum {
 };
 
 struct xe_res_spine {
-    struct xe_resource res;
+    struct xe_asset asset;
     xe_scene_node node;
     spSkeleton *skel;
     spAnimationState *anim;
 };
 
+// TODO: xe_atlas_entry as asset and xe_res_spine as scene_node.
+// TODO: one atlas can be shared between several skeleton_jsons. Make it a list and save each filename with its data.
 struct xe_atlas_entry {
     char filename[XE_SP_FILENAME_LEN];
     struct xe_atlas_entry *next; 
@@ -49,7 +51,7 @@ void
 xe_spine_animation_pass(float delta_time)
 {
     for (int i = 0; i < XE_MAX_SPINES; ++i) {
-        if (g_spines[i].res.state == XE_RS_COMMITED) {
+        if (g_spines[i].asset.state == XE_ASSET_COMMITED) {
             xe_spine_animate(g_spines + i, delta_time);
         }
     }
@@ -58,13 +60,13 @@ xe_spine_animation_pass(float delta_time)
 void *
 xe_spine_get_skel(xe_scene_node node)
 {
-    return g_spines[xe_res_index(node.hnd)].skel;
+    return g_spines[xe_handle_index(node.hnd)].skel;
 }
 
 void *
 xe_spine_get_anim(xe_scene_node node)
 {
-    return g_spines[xe_res_index(node.hnd)].anim;
+    return g_spines[xe_handle_index(node.hnd)].anim;
 }
 
 /*
@@ -77,11 +79,11 @@ xe_spine_get_anim(xe_scene_node node)
  */
 enum { XE_SPBATCH_VTX_CAP = 1024 << 5, XE_SPBATCH_IDX_CAP = 1024 << 6 };
 struct slot_batch {
-    xe_gfx_vtx vert[XE_SPBATCH_VTX_CAP];
-    xe_gfx_idx indices[XE_SPBATCH_IDX_CAP << 1];
+    xe_vtx vert[XE_SPBATCH_VTX_CAP];
+    xe_vtx_idx indices[XE_SPBATCH_IDX_CAP << 1];
     int64_t vtx_count;
     int64_t idx_count;
-    xe_gfx_material material;
+    xe_material material;
 };
 
 /* TODO: Go back to colored vertices but keep dark color with the materials, so Additive blend can zero its alpha
@@ -97,15 +99,16 @@ xe_spine_draw(lu_mat4 *tr, void *draw_ctx)
 
     lu_err_assert(tr && draw_ctx);
 
-    current_batch.material.model = *tr;
-    current_batch.material.darkcolor = LU_VEC(0.0f, 0.0f, 0.0f, 1.0f);
+    current_batch.material.data.generic.model = *tr;
+    current_batch.material.data.generic.darkcolor = LU_VEC(0.0f, 0.0f, 0.0f, 1.0f);
+    current_batch.material.program = XE_PROGRAM_UNSET;
     current_batch.vtx_count = 0;
     current_batch.idx_count = 0;
 
-    xe_gfx_vtx vertbuf[2048];
-    xe_gfx_idx indibuf[2048];
-    xe_gfx_vtx *vertices = vertbuf;
-    xe_gfx_idx *indices = indibuf;
+    xe_vtx vertbuf[2048];
+    xe_vtx_idx indibuf[2048];
+    xe_vtx *vertices = vertbuf;
+    xe_vtx_idx *indices = indibuf;
     int slot_idx_count = 0;
     int slot_vtx_count = 0;
     float *uv = NULL;
@@ -142,11 +145,12 @@ xe_spine_draw(lu_mat4 *tr, void *draw_ctx)
             indibuf[5] = 0;
             slot_idx_count = 6;
 			slot_vtx_count = 4;
-			spRegionAttachment_computeWorldVertices(region, slot, (float*)vertices, 0, sizeof(xe_gfx_vtx) / sizeof(float));
+			spRegionAttachment_computeWorldVertices(region, slot, (float*)vertices, 0, sizeof(xe_vtx) / sizeof(float));
             uv = region->uvs;
-			const struct xe_res_image *pimg = xe_image_ptr(*((xe_image*)((spAtlasRegion *)region->rendererObject)->page->rendererObject));
-            current_batch.material.pma = pimg->flags & XE_IMG_PREMUL_ALPHA;
-            current_batch.material.tex = pimg->tex;
+			const struct xe_asset_image *pimg = xe_asset_image_data(*((xe_image*)((spAtlasRegion *)region->rendererObject)->page->rendererObject));
+            current_batch.material.data.generic.pma = pimg->flags & XE_IMG_PREMUL_ALPHA;
+            current_batch.material.data.generic.albedo_idx = pimg->tex.idx;
+            current_batch.material.data.generic.albedo_layer = (float)pimg->tex.layer;
 		} else if (attachment->type == SP_ATTACHMENT_MESH) {
 			spMeshAttachment *mesh = (spMeshAttachment *) attachment;
 			attach_color = &mesh->color;
@@ -158,13 +162,14 @@ xe_spine_draw(lu_mat4 *tr, void *draw_ctx)
 			}
 
             slot_vtx_count = mesh->super.worldVerticesLength / 2;
-			spVertexAttachment_computeWorldVertices(SUPER(mesh), slot, 0, slot_vtx_count * 2, (float*)vertices, 0, sizeof(xe_gfx_vtx) / sizeof(float));
+			spVertexAttachment_computeWorldVertices(SUPER(mesh), slot, 0, slot_vtx_count * 2, (float*)vertices, 0, sizeof(xe_vtx) / sizeof(float));
             uv = mesh->uvs;
             memcpy(indices, mesh->triangles, mesh->trianglesCount * sizeof(*indices));
             slot_idx_count = mesh->trianglesCount;
-			const struct xe_res_image *pimg = xe_image_ptr(*((xe_image*)((spAtlasRegion *)mesh->rendererObject)->page->rendererObject));
-            current_batch.material.pma = pimg->flags & XE_IMG_PREMUL_ALPHA;
-            current_batch.material.tex = pimg->tex;
+			const struct xe_asset_image *pimg = xe_asset_image_data(*((xe_image*)((spAtlasRegion *)mesh->rendererObject)->page->rendererObject));
+            current_batch.material.data.generic.pma = pimg->flags & XE_IMG_PREMUL_ALPHA;
+            current_batch.material.data.generic.albedo_idx = pimg->tex.idx;
+            current_batch.material.data.generic.albedo_layer = (float)pimg->tex.layer;
 		} else if (attachment->type == SP_ATTACHMENT_CLIPPING) {
 			spClippingAttachment *clip = (spClippingAttachment *) slot->attachment;
 			spSkeletonClipping_clipStart(g_clipper, slot, clip);
@@ -190,7 +195,7 @@ xe_spine_draw(lu_mat4 *tr, void *draw_ctx)
             // TODO: Optimize but first try with spine-cpp-lite compiled as .so for C
             spSkeletonClipping_clipTriangles(g_clipper, (float*)vertices, slot_vtx_count * 2, indices, slot_idx_count, &vertices->u, sizeof(*vertices));
             slot_vtx_count = g_clipper->clippedVertices->size >> 1;
-            xe_gfx_vtx *vtxit = vertices;
+            xe_vtx *vtxit = vertices;
             float *xyit = g_clipper->clippedVertices->items;
             float *uvit = g_clipper->clippedUVs->items;
             for (int j = 0; j < slot_vtx_count; ++j) {
@@ -221,15 +226,15 @@ xe_spine_draw(lu_mat4 *tr, void *draw_ctx)
         };
 
         if ((current_batch.vtx_count << 1 > XE_SPBATCH_VTX_CAP) || (current_batch.idx_count << 1 > XE_SPBATCH_IDX_CAP) ||
-                (current_batch.vtx_count && (memcmp(&current_batch.material.darkcolor, &dark_color, sizeof(dark_color))))) {
-            xe_gfx_push(current_batch.vert, current_batch.vtx_count * sizeof(xe_gfx_vtx),
-                current_batch.indices, current_batch.idx_count * sizeof(xe_gfx_idx), &current_batch.material);
+                (current_batch.vtx_count && (memcmp(&current_batch.material.data.generic.darkcolor, &dark_color, sizeof(dark_color))))) {
+            xe_render_push(current_batch.vert, current_batch.vtx_count * sizeof(xe_vtx),
+                current_batch.indices, current_batch.idx_count * sizeof(xe_vtx_idx), &current_batch.material);
             current_batch.idx_count = 0;
             current_batch.vtx_count = 0;
         }
 
-        current_batch.material.darkcolor = dark_color;
-        memcpy(&current_batch.vert[current_batch.vtx_count], vertices, slot_vtx_count * sizeof(xe_gfx_vtx));
+        current_batch.material.data.generic.darkcolor = dark_color;
+        memcpy(&current_batch.vert[current_batch.vtx_count], vertices, slot_vtx_count * sizeof(xe_vtx));
         for (int i = 0; i < slot_idx_count; ++i) {
             current_batch.indices[current_batch.idx_count + i] = indices[i] + current_batch.vtx_count;
         }
@@ -245,8 +250,8 @@ xe_spine_draw(lu_mat4 *tr, void *draw_ctx)
 	spSkeletonClipping_clipEnd2(g_clipper);
 
     if (current_batch.vtx_count) {
-        xe_gfx_push(current_batch.vert, current_batch.vtx_count * sizeof(xe_gfx_vtx),
-            current_batch.indices, current_batch.idx_count * sizeof(xe_gfx_idx), &current_batch.material);
+        xe_render_push(current_batch.vert, current_batch.vtx_count * sizeof(xe_vtx),
+            current_batch.indices, current_batch.idx_count * sizeof(xe_vtx_idx), &current_batch.material);
         current_batch.idx_count = 0;
         current_batch.vtx_count = 0;
     }
@@ -258,7 +263,7 @@ void
 xe_spine_draw_pass(void)
 {
     for (int i = 0; i < XE_MAX_SPINES; ++i) {
-        if (g_spines[i].res.state == XE_RS_COMMITED) {
+        if (g_spines[i].asset.state == XE_ASSET_COMMITED) {
             xe_spine_draw((lu_mat4*)xe_transform_get_global(g_spines[i].node), &g_spines[i]);
         }
     }
@@ -267,7 +272,7 @@ xe_spine_draw_pass(void)
 static void
 xe_spine_load(struct xe_res_spine *sp, const char *atlas, const char *skel_json, float scale, const char *idle_ani)
 {
-    sp->res.state = XE_RS_LOADING;
+    sp->asset.state = XE_ASSET_LOADING;
     struct xe_atlas_entry *atlas_it = g_atlases;
     while (atlas_it) {
         if (!strcmp(atlas, atlas_it->filename)) {
@@ -281,14 +286,14 @@ xe_spine_load(struct xe_res_spine *sp, const char *atlas, const char *skel_json,
         atlas_it = malloc(sizeof(*atlas_it));
         if (!atlas_it) {
             lu_log_err("Malloc failed for size: %lu. Aborting spine load.", sizeof(*atlas_it));
-            sp->res.state = XE_RS_FAILED;
+            sp->asset.state = XE_ASSET_FAILED;
             return;
         }
         memset(atlas_it, 0, sizeof(*atlas_it));
 
         if (strlen(atlas) >= XE_SP_FILENAME_LEN) {
             lu_log_err("filename %s not supported: too long.", atlas);
-            sp->res.state = XE_RS_FAILED;
+            sp->asset.state = XE_ASSET_FAILED;
             return;
         }
 
@@ -303,7 +308,7 @@ xe_spine_load(struct xe_res_spine *sp, const char *atlas, const char *skel_json,
         atlas_it->skel_data = spSkeletonJson_readSkeletonDataFile(atlas_it->skel_json, skel_json);
         if (!atlas_it->skel_data) {
             lu_log_err("%s skeleton data: %s", skel_json, atlas_it->skel_json->error);
-            sp->res.state = XE_RS_FAILED;
+            sp->asset.state = XE_ASSET_FAILED;
             return;
         }
     }
@@ -312,7 +317,7 @@ xe_spine_load(struct xe_res_spine *sp, const char *atlas, const char *skel_json,
         atlas_it->anim_data = spAnimationStateData_create(atlas_it->skel_data);
         if (!atlas_it->anim_data) {
             lu_log_err("Could not create animation data.");
-            sp->res.state = XE_RS_FAILED;
+            sp->asset.state = XE_ASSET_FAILED;
             return;
         }
     }
@@ -320,14 +325,14 @@ xe_spine_load(struct xe_res_spine *sp, const char *atlas, const char *skel_json,
     sp->skel = spSkeleton_create(atlas_it->skel_data);
     if (!sp->skel) {
         lu_log_err("Could not create spine skeleton. Aborting spine load.");
-        sp->res.state = XE_RS_FAILED;
+        sp->asset.state = XE_ASSET_FAILED;
         return;
     }
 
     sp->anim = spAnimationState_create(atlas_it->anim_data);
     if (!sp->anim) {
         lu_log_err("Could not create spine animation state. Aborting spine load.");
-        sp->res.state = XE_RS_FAILED;
+        sp->asset.state = XE_ASSET_FAILED;
         return;
     }
 
@@ -343,7 +348,7 @@ xe_spine_load(struct xe_res_spine *sp, const char *atlas, const char *skel_json,
         spAnimationState_setAnimationByName(sp->anim, 0, idle_ani, 1);
     }
 
-    sp->res.state = XE_RS_COMMITED;
+    sp->asset.state = XE_ASSET_COMMITED;
 }
 
 xe_scene_node
@@ -352,8 +357,8 @@ xe_spine_create(const char *atlas, const char *skel_json, float scale, const cha
     struct xe_res_spine *sp = NULL;
     for (int i = 0; i < XE_MAX_SPINES; ++i) {
         sp = &g_spines[i];
-        if (sp->res.state == XE_RS_FREE) {
-            sp->res.state = XE_RS_EMPTY;
+        if (sp->asset.state == XE_ASSET_FREE) {
+            sp->asset.state = XE_ASSET_EMPTY;
             break;
         }
     }

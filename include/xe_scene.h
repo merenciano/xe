@@ -1,23 +1,8 @@
 #ifndef XE_SCENE_H
 #define XE_SCENE_H
 
+#include "xe_asset.h"
 #include <llulu/lu_math.h>
-
-/* API Handle */
-typedef unsigned int xe_handle;
-
-/* API Image */
-typedef struct {xe_handle id;} xe_image;
-enum {
-    /* Compile-time config constants */
-    XE_MAX_IMAGES = 32,
-
-    /* Flags */
-    XE_IMG_PREMUL_ALPHA = 0x0001,
-};
-
-xe_image xe_image_load(const char *path, int tex_flags); // XE_IMG_ ... 
-xe_image xe_image_load_data(const void *pix_data, int w, int h, int c, int tex_flags); // XE_IMG_ ...
 
 /* API Scene graph */
 typedef struct xe_scene_node {
@@ -38,12 +23,8 @@ void xe_scene_update_world(void);
 void xe_scene_register_node_update(xe_scene_node node, void *user_data, void (*update_fn)(xe_scene_node, void *));
 
 /* API Transform */
-float *xe_scene_tr_init(xe_scene_node node, float px, float py, float pz, float scale);
+float *xe_transform_init(xe_scene_node node, float px, float py, float pz, float scale);
 
-/* Returns a reference *NOT SUITABLE STORING OR EXPOSING*.
- * Copy the matrix contents for anything other than reading as rvalue, since
- * not only the value but its memory location is likely to change (from other threads).
- */
 const float *xe_transform_get(xe_scene_node node);
 const float *xe_transform_get_global(xe_scene_node node);
 void xe_transform_set(xe_scene_node node, const float *mat);
@@ -58,4 +39,5 @@ const float *xe_transform_set_scale(xe_scene_node node, float x, float y, float 
 const float *xe_transform_set_rotation_x(xe_scene_node node, float rad);
 const float *xe_transform_set_rotation_y(xe_scene_node node, float rad);
 const float *xe_transform_set_rotation_z(xe_scene_node node, float rad);
+
 #endif /* XE_SCENE_H */

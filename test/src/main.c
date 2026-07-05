@@ -1,6 +1,7 @@
 #include "xe_platform.h"
-#include "xe_gfx.h"
+#include "xe_render.h"
 #include "xe_scene.h"
+#include <../src/xe_scene_internal.h>
 
 #include "xe_spine.h"
 #include "xe_nuklear.h"
@@ -12,6 +13,7 @@
 
 #include <stdbool.h>
 #include <stdio.h>
+#include <assert.h>
 
 static xe_platform platform;
 
@@ -85,11 +87,11 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    if (!xe_gfx_init(&(xe_gfx_config) {
+    if (!xe_render_init(&(xe_renderconf) {
         .gl_loader = platform.gl_loader,
         .vert_shader_path = "./assets/vert.glsl",
         .frag_shader_path = "./assets/frag.glsl",
-        .default_ops = xe_gfx_rops_default(0),
+        .default_ops = xe_draw_state_default(0),
         .background_color = { .r = 1.0f, .g = 0.0f, .b = 0.0f, .a = 1.0f },
         .viewport = { .x = 0, .y = 0, platform.viewport_w, platform.viewport_h }
     })) {
@@ -98,6 +100,9 @@ int main(int argc, char **argv)
     }
 
     lu_timestamp timer = lu_time_get();
+
+    xe_pipeline pipeline = xe_asset_pipeline_load("./assets/vert.glsl", "./assets/frag.glsl");
+    assert(xe_asset_pipeline_data(pipeline)->asset.state != XE_ASSET_FAILED);
 
     xe_image tex_test[] = {
         xe_image_load("./assets/tex_test_0.png", 0),
@@ -189,23 +194,24 @@ int main(int argc, char **argv)
         }
         nk_end(ctx);
 
-        xe_gfx_pass_begin(
+        xe_render_pass_begin(
             (lu_rect){0, 0, platform.viewport_w, platform.viewport_h},
             (lu_color){ bg.r, bg.g, bg.b, bg.a},
             true, true, true,
-            (xe_gfx_rops){ 
+            (xe_draw_state){ 
                 .clip = {0,0,0,0},
                 .blend_src = XE_BLEND_UNSET,
                 .blend_dst = XE_BLEND_UNSET,
                 .depth = XE_DEPTH_UNSET,
-                .cull = XE_CULL_UNSET
+                .cull = XE_CULL_UNSET,
+                .pipeline = xe_asset_pipeline_program(pipeline)
             }
         );
 
         xe_spine_animation_pass(deltasec);
         xe_scene_update_world();
         xe_scene_drawable_draw_pass();
-        xe_gfx_rops_set((xe_gfx_rops) {
+        xe_render_draw_state_set((xe_draw_state) {
                 .clip = {0,0,0,0},
                 .blend_src = XE_BLEND_ONE,
                 .blend_dst = XE_BLEND_ONE_MINUS_SRC_ALPHA,
@@ -214,7 +220,7 @@ int main(int argc, char **argv)
         xe_spine_draw_pass();
 
         xe_nk_render();
-        xe_gfx_render();
+        xe_render_draw();
         deltasec = xe_platform_update();
     }
 

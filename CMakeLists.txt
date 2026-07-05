@@ -12,14 +12,15 @@ set_target_properties(xe PROPERTIES ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}
 
 target_sources(xe PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/xe_scene.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/xe_resource.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/xe_asset.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/xe_platform.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/xe_gfx.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/xe_gfx_helpers.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/xe_render.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/xe_render_internal.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/xe_scene_internal.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/xe_scene.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/xe_gfx.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/xe_render.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/xe_platform.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/xe_asset.h
 )
 
 target_include_directories(xe PRIVATE

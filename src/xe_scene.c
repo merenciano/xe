@@ -1,6 +1,6 @@
 #include "xe_scene.h"
 #include "xe_scene_internal.h"
-#include "xe_gfx.h"
+#include "xe_render.h"
 
 #include <llulu/lu_defs.h>
 #include <llulu/lu_math.h>
@@ -14,8 +14,10 @@ enum {
     XE_CFG_MAX_SCENE_GRAPH_DEPTH = 64
 };
 
+typedef uint16_t xe_version;
+
 struct xe_graph_node {
-    struct xe_resource res;
+    xe_version version;
     int transform_index;
     int child_count;
 };
@@ -31,7 +33,7 @@ struct xe_scene_node_update {
     void (*update_fn)(xe_scene_node, void *);
 };
 
-static const xe_gfx_vtx QUAD_VERTICES[] = {
+static const xe_vtx QUAD_VERTICES[] = {
     { .x = -1.0f, .y = -1.0f,
       .u = 0.0f, .v = 0.0f,
       .color = 0xFFFFFFFF },
@@ -46,7 +48,7 @@ static const xe_gfx_vtx QUAD_VERTICES[] = {
       .color = 0xFFFFFFFF }
 };
 
-static const xe_gfx_idx QUAD_INDICES[] = { 0, 1, 2, 0, 2, 3 };
+static const xe_vtx_idx QUAD_INDICES[] = { 0, 1, 2, 0, 2, 3 };
 
 static struct xe_graph_node g_nodes[XE_SCENE_CAP];
 static lu_mat4 g_transforms[XE_SCENE_CAP];
@@ -77,8 +79,8 @@ xe_scene_dispatch_updates(void)
 static const struct xe_graph_node *
 get_node(xe_scene_node n)
 {
-    lu_err_assert(xe_res_index(n.hnd) < g_node_count && "Node index out of range.");
-    return g_nodes + xe_res_index(n.hnd);
+    lu_err_assert(xe_handle_index(n.hnd) < g_node_count && "Node index out of range.");
+    return g_nodes + xe_handle_index(n.hnd);
 }
 
 static lu_mat4 *
@@ -100,10 +102,9 @@ xe_scene_node xe_scene_create_node(xe_scene_node_desc *desc)
     int index = g_node_count++;
     g_nodes[index].child_count = 0;
     g_nodes[index].transform_index = index;
-    g_nodes[index].res.state = 0;
-    g_nodes[index].res.version++;
-    xe_scene_node node = { .hnd = xe_res_handle_gen(g_nodes[index].res.version, index)};
-    xe_scene_tr_init(node, desc->pos_x, desc->pos_y, desc->pos_z, desc->scale);
+    g_nodes[index].version++;
+    xe_scene_node node = { .hnd = xe_handle_gen(g_nodes[index].version, index)};
+    xe_transform_init(node, desc->pos_x, desc->pos_y, desc->pos_z, desc->scale);
     return node;
 }
 
@@ -115,8 +116,15 @@ xe_drawable_draw(lu_mat4 *tr, void *draw_ctx)
         return LU_ERR_BADARG;
     }
     struct xe_graph_drawable *node = draw_ctx;
-    xe_gfx_material material = (xe_gfx_material){.model = *tr, .color = LU_VEC(1.0f, 1.0f, 1.0f, 1.0f), .darkcolor = LU_VEC(0.0f, 0.0f, 0.0f, 1.0f), .tex = xe_image_ptr(node->img)->tex, .pma = 0};
-    xe_gfx_push(QUAD_VERTICES, sizeof(QUAD_VERTICES), QUAD_INDICES, sizeof(QUAD_INDICES), &material);
+    xe_material mat;
+    memset(mat.data.buf, 0, sizeof(mat.data.buf));
+    mat.data.generic.model = *tr;
+    mat.data.generic.color = LU_VEC(1.0f, 1.0f, 1.0f, 1.0f);
+    mat.data.generic.darkcolor = LU_VEC(0.0f, 0.0f, 0.0f, 1.0f);
+    mat.data.generic.albedo_idx = xe_asset_image_data(node->img)->tex.idx;
+    mat.data.generic.albedo_layer = (float)(xe_asset_image_data(node->img)->tex.layer);
+    mat.program = XE_PROGRAM_UNSET;
+    xe_render_push(QUAD_VERTICES, sizeof(QUAD_VERTICES), QUAD_INDICES, sizeof(QUAD_INDICES), &mat);
     return LU_ERR_SUCCESS;
 }
 
@@ -126,7 +134,6 @@ xe_scene_drawable_draw_pass(void)
     int count = g_drawable_count;
     for (int i = 0; i < count; ++i) {
         xe_drawable_draw((lu_mat4*)xe_transform_get_global(g_drawables[i].node), &g_drawables[i]);
-
     }
 }
 
@@ -227,9 +234,10 @@ xe_scene_update_world(void)
     }
 }
 
-float* xe_scene_tr_init(xe_scene_node node, float px, float py, float pz, float scale)
+float*
+xe_transform_init(xe_scene_node node, float px, float py, float pz, float scale)
 {
-    float *tr = g_transforms[g_nodes[xe_res_index(node.hnd)].transform_index].m;
+    float *tr = g_transforms[g_nodes[xe_handle_index(node.hnd)].transform_index].m;
     lu_mat4_identity(tr);
     lu_mat4_scale(tr, tr, (float[3]) { scale, scale, scale });
     return lu_mat4_translate(tr, tr, (float[3]) { px, py, pz });
