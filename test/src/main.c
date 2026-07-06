@@ -91,7 +91,7 @@ int main(int argc, char **argv)
         .gl_loader = platform.gl_loader,
         .vert_shader_path = "./assets/vert.glsl",
         .frag_shader_path = "./assets/frag.glsl",
-        .default_ops = xe_draw_state_default(0),
+        .default_draw_state = { .blend_src = XE_BLEND_ONE, .blend_dst = XE_BLEND_ONE_MINUS_SRC_ALPHA, .clip = {0,0,0,0}, .cull = XE_CULL_BACK, .depth = XE_DEPTH_LESS, .pipeline = 0 },
         .background_color = { .r = 1.0f, .g = 0.0f, .b = 0.0f, .a = 1.0f },
         .viewport = { .x = 0, .y = 0, platform.viewport_w, platform.viewport_h }
     })) {
@@ -197,26 +197,26 @@ int main(int argc, char **argv)
         xe_render_pass_begin(
             (lu_rect){0, 0, platform.viewport_w, platform.viewport_h},
             (lu_color){ bg.r, bg.g, bg.b, bg.a},
-            true, true, true,
-            (xe_draw_state){ 
+            true, true, true);
+        xe_render_pass_change_state((xe_draw_state){ 
                 .clip = {0,0,0,0},
-                .blend_src = XE_BLEND_UNSET,
-                .blend_dst = XE_BLEND_UNSET,
-                .depth = XE_DEPTH_UNSET,
-                .cull = XE_CULL_UNSET,
+                .blend_src = XE_BLEND_DISABLED,
+                .blend_dst = XE_BLEND_DISABLED,
+                .depth = XE_DEPTH_DISABLED,
+                .cull = XE_CULL_NONE,
                 .pipeline = xe_asset_pipeline_program(pipeline)
-            }
-        );
+            });
 
         xe_spine_animation_pass(deltasec);
         xe_scene_update_world();
         xe_scene_drawable_draw_pass();
-        xe_render_draw_state_set((xe_draw_state) {
+        xe_render_pass_change_state((xe_draw_state) {
                 .clip = {0,0,0,0},
                 .blend_src = XE_BLEND_ONE,
                 .blend_dst = XE_BLEND_ONE_MINUS_SRC_ALPHA,
                 .depth = XE_DEPTH_UNSET,
-                .cull = XE_CULL_UNSET });
+                .cull = XE_CULL_UNSET,
+                .pipeline = XE_PROGRAM_UNSET });
         xe_spine_draw_pass();
 
         xe_nk_render();

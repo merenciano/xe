@@ -79,7 +79,7 @@ xe_spine_get_anim(xe_scene_node node)
  */
 enum { XE_SPBATCH_VTX_CAP = 1024 << 5, XE_SPBATCH_IDX_CAP = 1024 << 6 };
 struct slot_batch {
-    xe_vtx vert[XE_SPBATCH_VTX_CAP];
+    xe_2d_vtx vert[XE_SPBATCH_VTX_CAP];
     xe_vtx_idx indices[XE_SPBATCH_IDX_CAP << 1];
     int64_t vtx_count;
     int64_t idx_count;
@@ -105,9 +105,9 @@ xe_spine_draw(lu_mat4 *tr, void *draw_ctx)
     current_batch.vtx_count = 0;
     current_batch.idx_count = 0;
 
-    xe_vtx vertbuf[2048];
+    xe_2d_vtx vertbuf[2048];
     xe_vtx_idx indibuf[2048];
-    xe_vtx *vertices = vertbuf;
+    xe_2d_vtx *vertices = vertbuf;
     xe_vtx_idx *indices = indibuf;
     int slot_idx_count = 0;
     int slot_vtx_count = 0;
@@ -145,7 +145,7 @@ xe_spine_draw(lu_mat4 *tr, void *draw_ctx)
             indibuf[5] = 0;
             slot_idx_count = 6;
 			slot_vtx_count = 4;
-			spRegionAttachment_computeWorldVertices(region, slot, (float*)vertices, 0, sizeof(xe_vtx) / sizeof(float));
+			spRegionAttachment_computeWorldVertices(region, slot, (float*)vertices, 0, sizeof(xe_2d_vtx) / sizeof(float));
             uv = region->uvs;
 			const struct xe_asset_image *pimg = xe_asset_image_data(*((xe_image*)((spAtlasRegion *)region->rendererObject)->page->rendererObject));
             current_batch.material.data.generic.pma = pimg->flags & XE_IMG_PREMUL_ALPHA;
@@ -162,7 +162,7 @@ xe_spine_draw(lu_mat4 *tr, void *draw_ctx)
 			}
 
             slot_vtx_count = mesh->super.worldVerticesLength / 2;
-			spVertexAttachment_computeWorldVertices(SUPER(mesh), slot, 0, slot_vtx_count * 2, (float*)vertices, 0, sizeof(xe_vtx) / sizeof(float));
+			spVertexAttachment_computeWorldVertices(SUPER(mesh), slot, 0, slot_vtx_count * 2, (float*)vertices, 0, sizeof(xe_2d_vtx) / sizeof(float));
             uv = mesh->uvs;
             memcpy(indices, mesh->triangles, mesh->trianglesCount * sizeof(*indices));
             slot_idx_count = mesh->trianglesCount;
@@ -195,7 +195,7 @@ xe_spine_draw(lu_mat4 *tr, void *draw_ctx)
             // TODO: Optimize but first try with spine-cpp-lite compiled as .so for C
             spSkeletonClipping_clipTriangles(g_clipper, (float*)vertices, slot_vtx_count * 2, indices, slot_idx_count, &vertices->u, sizeof(*vertices));
             slot_vtx_count = g_clipper->clippedVertices->size >> 1;
-            xe_vtx *vtxit = vertices;
+            xe_2d_vtx *vtxit = vertices;
             float *xyit = g_clipper->clippedVertices->items;
             float *uvit = g_clipper->clippedUVs->items;
             for (int j = 0; j < slot_vtx_count; ++j) {
@@ -227,14 +227,14 @@ xe_spine_draw(lu_mat4 *tr, void *draw_ctx)
 
         if ((current_batch.vtx_count << 1 > XE_SPBATCH_VTX_CAP) || (current_batch.idx_count << 1 > XE_SPBATCH_IDX_CAP) ||
                 (current_batch.vtx_count && (memcmp(&current_batch.material.data.generic.darkcolor, &dark_color, sizeof(dark_color))))) {
-            xe_render_push(current_batch.vert, current_batch.vtx_count * sizeof(xe_vtx),
+            xe_render_pass_add(current_batch.vert, current_batch.vtx_count * sizeof(xe_2d_vtx),
                 current_batch.indices, current_batch.idx_count * sizeof(xe_vtx_idx), &current_batch.material);
             current_batch.idx_count = 0;
             current_batch.vtx_count = 0;
         }
 
         current_batch.material.data.generic.darkcolor = dark_color;
-        memcpy(&current_batch.vert[current_batch.vtx_count], vertices, slot_vtx_count * sizeof(xe_vtx));
+        memcpy(&current_batch.vert[current_batch.vtx_count], vertices, slot_vtx_count * sizeof(xe_2d_vtx));
         for (int i = 0; i < slot_idx_count; ++i) {
             current_batch.indices[current_batch.idx_count + i] = indices[i] + current_batch.vtx_count;
         }
@@ -250,7 +250,7 @@ xe_spine_draw(lu_mat4 *tr, void *draw_ctx)
 	spSkeletonClipping_clipEnd2(g_clipper);
 
     if (current_batch.vtx_count) {
-        xe_render_push(current_batch.vert, current_batch.vtx_count * sizeof(xe_vtx),
+        xe_render_pass_add(current_batch.vert, current_batch.vtx_count * sizeof(xe_2d_vtx),
             current_batch.indices, current_batch.idx_count * sizeof(xe_vtx_idx), &current_batch.material);
         current_batch.idx_count = 0;
         current_batch.vtx_count = 0;

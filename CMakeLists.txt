@@ -21,6 +21,7 @@ target_sources(xe PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include/xe_render.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/xe_platform.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/xe_asset.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/xe_config.h
 )
 
 target_include_directories(xe PRIVATE

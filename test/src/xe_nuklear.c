@@ -124,17 +124,17 @@ xe_nk_render(void)
 {
     static char cmdbuf_memory[XE_NK_CMDBUF_SIZE];
     static const struct nk_draw_vertex_layout_element vertex_layout[] = {
-        {NK_VERTEX_POSITION, NK_FORMAT_FLOAT, NK_OFFSETOF(xe_vtx, x)},
-        {NK_VERTEX_TEXCOORD, NK_FORMAT_FLOAT, NK_OFFSETOF(xe_vtx, u)},
-        {NK_VERTEX_COLOR, NK_FORMAT_R8G8B8A8, NK_OFFSETOF(xe_vtx, color)},
+        {NK_VERTEX_POSITION, NK_FORMAT_FLOAT, NK_OFFSETOF(xe_2d_vtx, x)},
+        {NK_VERTEX_TEXCOORD, NK_FORMAT_FLOAT, NK_OFFSETOF(xe_2d_vtx, u)},
+        {NK_VERTEX_COLOR, NK_FORMAT_R8G8B8A8, NK_OFFSETOF(xe_2d_vtx, color)},
         {NK_VERTEX_LAYOUT_END}
     };
 
     struct nk_convert_config config = {0};
     memset(&config, 0, sizeof(config));
     config.vertex_layout = vertex_layout;
-    config.vertex_size = sizeof(xe_vtx);
-    config.vertex_alignment = NK_ALIGNOF(xe_vtx);
+    config.vertex_size = sizeof(xe_2d_vtx);
+    config.vertex_alignment = NK_ALIGNOF(xe_2d_vtx);
     config.tex_null = g_nuk.tex_null;
     config.circle_segment_count = 22;
     config.curve_segment_count = 22;
@@ -170,7 +170,7 @@ xe_nk_render(void)
         if (!cmd->elem_count) {
             continue;
         }
-        xe_render_draw_state_set((xe_draw_state){
+        xe_render_pass_change_state((xe_draw_state){
             .clip = {
                 .x = cmd->clip_rect.x > 0.0f ? (uint16_t)cmd->clip_rect.x : 0, /* TODO: use int32 clip values for config */
                 .y = cmd->clip_rect.y > 0.0f ? g_nuk.plat->window_h - (uint16_t)(cmd->clip_rect.y + cmd->clip_rect.h) : 0,

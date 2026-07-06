@@ -1,25 +1,32 @@
 #ifndef XE_RENDER_H
 #define XE_RENDER_H
 
+#include "xe_config.h"
 #include <llulu/lu_math.h>
 #include <stdint.h>
 #include <stdbool.h>
 
 enum {
-    XE_SHADER_DATA_BYTES = 256,
     XE_PROGRAM_UNSET = 0,
 };
 
-typedef uint16_t xe_vtx_idx; /* Configurable: uint16_t or uint32_t */
 typedef uint32_t xe_program;
 
-typedef struct xe_vtx {
+typedef struct xe_2d_vtx {
     float x;
     float y;
     float u;
     float v;
     uint32_t color;
-} xe_vtx;
+} xe_2d_vtx;
+
+typedef struct xe_3d_vtx {
+    float px, py, pz;  // pos
+    float nx, ny, nz;  // normal
+    float tx, ty, tz;  // tangent
+    float bx, by, bz;  // bitangent 
+    float u, v;        // tex coords
+} xe_3d_vtx;
 
 enum xe_tex_pixfmt {
     XE_TEX_R = 0,
@@ -47,21 +54,21 @@ typedef struct xe_texfmt {
 
 typedef struct xe_tex {
     int idx;
-    int layer;
+    float layer;
 } xe_tex;
 
 struct xe_shader_generic_spine_data {
     lu_mat4 model;
-    lu_vec4 color; // TODO: Remove since it's in the vertex already
-    lu_vec4 darkcolor; // darkColor.a == PMA
+    lu_vec4 color;
+    lu_vec4 darkcolor;
     int32_t albedo_idx;
     float albedo_layer;
-    float pma; // TODO: Use DarkColor.a ???
+    float pma; // pre-multiplied alpha
     float padding;
 };
 
 typedef union xe_shader_data {
-    uint8_t buf[XE_SHADER_DATA_BYTES];
+    uint8_t buf[XE_SHADER_DATA_STRIDE];
     struct xe_shader_generic_spine_data generic;
 } xe_shader_data;
 
@@ -113,51 +120,36 @@ typedef struct xe_draw_state {
     xe_program pipeline;
 } xe_draw_state;
 
-enum xe_draw_state_default_type_flags {
-    XE_DRAW_STATE_DEFAULT_DEPTH = 0x01, /* Enable depth test with less func */
-    XE_DRAW_STATE_DEFAULT_BLEND = 0x02, /* Enable blend mix (one, one_minus_src_alpha) */
-    XE_DRAW_STATE_DEFAULT_CULL  = 0x04, /* Enable backface culling */
-};
-
-static inline xe_draw_state
-xe_draw_state_default(int flags) /* XE_DRAW_STATE_DEFAULT_..., see: enum xe_draw_state_default_type_flags */ 
-{
-    return (xe_draw_state){
-        .clip = {0, 0, 0, 0},
-        .blend_src = flags & XE_DRAW_STATE_DEFAULT_BLEND ?
-            XE_BLEND_ONE : XE_BLEND_DISABLED,
-        .blend_dst = flags & XE_DRAW_STATE_DEFAULT_BLEND ?
-            XE_BLEND_ONE_MINUS_SRC_ALPHA : XE_BLEND_DISABLED,
-        .depth = flags & XE_DRAW_STATE_DEFAULT_DEPTH ?
-            XE_DEPTH_LESS : XE_DEPTH_DISABLED,
-        .cull = flags & XE_DRAW_STATE_DEFAULT_CULL ?
-            XE_CULL_BACK : XE_CULL_NONE,
-        .pipeline = XE_PROGRAM_UNSET
-    };
-}
-
+/* Batches  */
 typedef struct xe_draw_batch {
     ptrdiff_t start_offset; /* in draw units */
     int batch_size;   /* in draw units */
     xe_draw_state state;
 } xe_draw_batch;
 
-typedef struct xe_renderpass {
+typedef struct xe_render_pass {
     /* TODO: Framebuffer */
     lu_rect viewport;
     lu_color bg_color;
     bool clear_color;
     bool clear_depth;
     bool clear_stencil;
-    int head;
-    xe_draw_batch batches[512];
-} xe_renderpass;
+    int first_batch; /* xe_render_queue.batch[] index */
+    int last_batch;
+} xe_render_pass;
+
+typedef struct xe_render_queue {
+    int pass_count;
+    int batch_count;
+    xe_render_pass pass[XE_MAX_PASSES];
+    xe_draw_batch batch[XE_MAX_DRAWS]; // Capacity for worst case scenario (batches == draws).
+} xe_render_queue;
 
 typedef struct xe_renderconf {
     void *(*gl_loader)(const char *);
     const char *vert_shader_path;
     const char *frag_shader_path;
-    xe_draw_state default_ops;
+    xe_draw_state default_draw_state;
     lu_color background_color;
     lu_rect viewport;
 } xe_renderconf;
@@ -170,18 +162,19 @@ void xe_render_sync(void);
 /* Flushes, unmaps and deletes gpu resources. It is up to the programmer to call or skip this function. */
 void xe_render_shutdown(void);
 
+/* Texture API */
 xe_tex xe_render_tex_alloc(xe_texfmt format);
 void xe_render_tex_load(xe_tex tex, const void *data);
 
+/* Pipeline API */
 xe_program xe_render_pipeline_alloc(void);
-bool xe_render_pipeline_compile(xe_program pipeline, xe_shader_sources src);
-void xe_render_pipeline_use(xe_program pipeline);
+bool xe_render_pipeline_load(xe_program pipeline, xe_shader_sources src);
 
+/* Rendering */
 void xe_render_pass_begin(lu_rect viewport, lu_color background,
-                       bool clear_color, bool clear_depth, bool clear_stencil,
-                       xe_draw_state state);
-void xe_render_draw_state_set(xe_draw_state state);
-void xe_render_push(const void *vert, size_t vert_size, const void *indices, size_t indices_size, const xe_material *material);
+                       bool clear_color, bool clear_depth, bool clear_stencil);
+void xe_render_pass_change_state(xe_draw_state state);
+void xe_render_pass_add(const void *vert, size_t vert_size, const void *indices, size_t indices_size, const xe_material *material);
 void xe_render_draw(void);
 
 #endif /* XE_RENDER_H */

@@ -154,7 +154,6 @@ xe_image_load(const char *path, int tex_flags)
     return hnd;
 }
 
-
 xe_pipeline
 xe_asset_pipeline_load(const char *vert_path, const char *frag_path)
 {
@@ -205,7 +204,7 @@ xe_asset_pipeline_load(const char *vert_path, const char *frag_path)
         goto asset_failed;
     }
 
-    bool compiled = xe_render_pipeline_compile(pip->id, src);
+    bool compiled = xe_render_pipeline_load(pip->id, src);
     if (!compiled) {
         goto asset_failed;
     }

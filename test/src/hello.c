@@ -1,6 +1,8 @@
 
 #include <xe_render.h>
 #include <xe_platform.h>
+#include <xe_asset.h>
+#include <../src/xe_scene_internal.h>
 #include <llulu/lu_defs.h>
 #include <llulu/lu_math.h>
 #include <stb/stb_image.h>
@@ -8,7 +10,7 @@
 
 static inline bool load_texture_from_path(xe_tex *tex, const char *path);
 
-static const xe_vtx QUAD_VERTICES[] = {
+static const xe_2d_vtx QUAD_VERTICES[] = {
     { .x = -1.0f, .y = -1.0f,
       .u = 0.0f, .v = 0.0f,
       .color = 0xFFFFFFFF },
@@ -51,7 +53,10 @@ int main()
             .gl_loader = g_platform.gl_loader,
             .vert_shader_path = "./assets/vert.glsl",
             .frag_shader_path = "./assets/frag.glsl",
-            .default_ops = xe_draw_state_default(XE_DRAW_STATE_DEFAULT_BLEND),
+                .default_draw_state = {
+                    .blend_src = XE_BLEND_ONE, .blend_dst = XE_BLEND_ONE_MINUS_SRC_ALPHA, .clip = {0,0,0,0},
+                    .cull = XE_CULL_BACK, .depth = XE_DEPTH_LESS, .pipeline = 0
+            },
             .background_color = { .r = 0.02f, .g = 0.01f, .b = 0.04f, .a = 1.0f },
             .viewport = { .x = 0, .y = 0, g_platform.viewport_w, g_platform.viewport_h }
         })) {
@@ -63,22 +68,25 @@ int main()
         printf("Can not load default texture\n");
         return 1;
     }
+    
+    xe_pipeline pipe = xe_asset_pipeline_load("./assets/vert.glsl", "./assets/frag.glsl");
 
     xe_platform_update();
     while (!g_platform.close) {
         xe_render_pass_begin(
             (lu_rect){0, 0, g_platform.viewport_w, g_platform.viewport_h},
             (lu_color){ 1.0f, 0.0f, 0.0f, 1.0f},
-            true, true, false,
-            (xe_draw_state){ 
-                .clip = {0,0,0,0},
-                .blend_src = XE_BLEND_UNSET,
-                .blend_dst = XE_BLEND_UNSET, 
-                .depth = XE_DEPTH_UNSET,
-                .cull = XE_CULL_UNSET
-            }
+            true, true, false
         );
-        xe_render_push(QUAD_VERTICES, sizeof(QUAD_VERTICES),
+        xe_render_pass_change_state((xe_draw_state){
+            .blend_src = XE_BLEND_DISABLED,
+                .blend_dst = XE_BLEND_DISABLED,
+                .cull = XE_CULL_NONE,
+                .depth = XE_DEPTH_DISABLED,
+                .clip = {0,0,0,0},
+                .pipeline = xe_asset_pipeline_program(pipe)
+        });
+        xe_render_pass_add(QUAD_VERTICES, sizeof(QUAD_VERTICES),
                     QUAD_INDICES, sizeof(QUAD_INDICES),
                     &QUAD_MATERIAL);
 

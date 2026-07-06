@@ -33,7 +33,7 @@ struct xe_scene_node_update {
     void (*update_fn)(xe_scene_node, void *);
 };
 
-static const xe_vtx QUAD_VERTICES[] = {
+static const xe_2d_vtx QUAD_VERTICES[] = {
     { .x = -1.0f, .y = -1.0f,
       .u = 0.0f, .v = 0.0f,
       .color = 0xFFFFFFFF },
@@ -124,7 +124,7 @@ xe_drawable_draw(lu_mat4 *tr, void *draw_ctx)
     mat.data.generic.albedo_idx = xe_asset_image_data(node->img)->tex.idx;
     mat.data.generic.albedo_layer = (float)(xe_asset_image_data(node->img)->tex.layer);
     mat.program = XE_PROGRAM_UNSET;
-    xe_render_push(QUAD_VERTICES, sizeof(QUAD_VERTICES), QUAD_INDICES, sizeof(QUAD_INDICES), &mat);
+    xe_render_pass_add(QUAD_VERTICES, sizeof(QUAD_VERTICES), QUAD_INDICES, sizeof(QUAD_INDICES), &mat);
     return LU_ERR_SUCCESS;
 }
 
